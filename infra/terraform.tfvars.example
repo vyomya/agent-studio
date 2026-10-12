@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (git-ignored) and fill in from OCI Console:
+# Profile > My profile > API keys > Add API key > "Configuration file preview"
+tenancy_ocid     = "ocid1.tenancy.oc1..xxxx"
+user_ocid        = "ocid1.user.oc1..xxxx"
+fingerprint      = "aa:bb:cc:..."
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "us-ashburn-1"
+compartment_ocid = "ocid1.tenancy.oc1..xxxx"   # root compartment is fine
+
+# ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+# admin_cidr          = "203.0.113.7/32"
+# ad_number           = 1    # try 2 or 3 on "Out of host capacity"
+# ocpus               = 2
+# memory_gbs          = 12

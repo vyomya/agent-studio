@@ -1,0 +1,15 @@
+# Terraform / OpenTofu state and secrets
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/.terraform.lock.hcl.bak
+infra/terraform.tfvars
+*.pem
+*.key
+
+# Runtime secrets
+.env
+.env.*
+!.env.example
+agents/**/.env
+agents/**/auth*.json
