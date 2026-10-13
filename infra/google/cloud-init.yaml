@@ -1,0 +1,37 @@
+#cloud-config
+# Base machine only. The app, Caddy and the run-on-boot service are tickets for the agents.
+package_update: true
+packages:
+  - git
+  - curl
+  - jq
+  - unzip
+  - build-essential
+  - python3-venv
+  - python3-pip
+  - sqlite3
+  - ca-certificates
+  - gnupg
+
+swap:
+  filename: /swapfile
+  size: 4294967296   # 4 GB of headroom next to OpenClaw, Hermes and Postgres
+
+runcmd:
+
+  # Docker (Postgres and the app can run in containers)
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker ubuntu
+
+  # Node 24 (OpenClaw needs 24.16+ or 26.1+)
+  - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  - apt-get install -y nodejs
+
+  # GitHub CLI (agents open issues and PRs with gh)
+  - mkdir -p -m 755 /etc/apt/keyrings
+  - curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+  - chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+  - apt-get update && apt-get install -y gh
+
+  - touch /home/ubuntu/.cloud-init-done && chown ubuntu:ubuntu /home/ubuntu/.cloud-init-done

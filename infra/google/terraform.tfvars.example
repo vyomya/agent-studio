@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored).
+project_id = "agent-studio-123456"     # gcloud config get-value project
+# zone                = "us-east1-b"   # try us-east1-c or -d if this zone is out of capacity
+# ssh_public_key_path = "~/.ssh/agent-studio-gcp.pub"

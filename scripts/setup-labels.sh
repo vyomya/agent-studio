@@ -6,12 +6,17 @@ REPO="${1:?usage: setup-labels.sh owner/repo}"
 lbl() { gh label create "$1" --repo "$REPO" --color "$2" --description "$3" --force; }
 
 # Who owns the ticket right now
-lbl "agent:pm"         "5319e7" "Orchestrator (Hermes) owns this"
-lbl "agent:builder-1"  "1d76db" "Builder 1 (OpenClaw) owns this"
-lbl "agent:builder-2"  "0e8a16" "Builder 2 (OpenClaw) owns this"
-lbl "agent:reviewer"   "fbca04" "Reviewer (Hermes) owns this"
-lbl "agent:tester"     "d93f0b" "Tester (OpenClaw) owns this"
-lbl "agent:human"      "000000" "Needs Vyom"
+lbl "agent:architect"     "5319e7" "Architect (Hermes) owns this"
+lbl "agent:lead"          "6f42c1" "Team lead (Hermes) owns this"
+lbl "agent:builder-core"  "1d76db" "Builder, core area (OpenClaw) owns this"
+lbl "agent:builder-web"   "0e8a16" "Builder, web area (OpenClaw) owns this"
+lbl "agent:reviewer"      "fbca04" "Reviewer (Hermes) owns this"
+lbl "agent:tester"        "d93f0b" "Tester (OpenClaw) owns this"
+lbl "agent:human"         "000000" "Needs Vyom"
+
+# Which builder area a ticket belongs to
+lbl "area:core" "bfd4f2" "Validator, generator, retry, database, limits"
+lbl "area:web"  "c2f0c2" "Pages, gallery, safe display, Caddy, deploy"
 
 # Where the ticket is in the flow (issues)
 lbl "status:ready"              "c2e0c6" "Assigned by pm, waiting for pickup"
@@ -39,3 +44,8 @@ lbl "priority:p1"   "fbca04" "Core but not blocking"
 lbl "priority:p2"   "c5def5" "Stretch"
 
 echo "Labels ready on $REPO"
+
+# Labels from the earlier 5-agent design, safe to delete if they exist
+for old in "agent:pm" "agent:builder-1" "agent:builder-2"; do
+  gh label delete "$old" --repo "$REPO" --yes 2>/dev/null || true
+done

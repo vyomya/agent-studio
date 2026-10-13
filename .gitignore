@@ -1,9 +1,9 @@
 # Terraform / OpenTofu state and secrets
-infra/.terraform/
-infra/*.tfstate
-infra/*.tfstate.*
-infra/.terraform.lock.hcl.bak
-infra/terraform.tfvars
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/.terraform.lock.*
+infra/**/terraform.tfvars
 *.pem
 *.key
 

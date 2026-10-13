@@ -1,0 +1,14 @@
+[Unit]
+Description=Agent Studio: wake the %i agent if work is waiting
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=agents
+Group=agents
+Environment=HOME=/home/agents
+EnvironmentFile=/srv/agent-studio/path.env
+ExecStart=/srv/agent-studio/agents/bin/wake.sh %i
+TimeoutStartSec=30min
+Nice=5
