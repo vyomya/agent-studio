@@ -1,51 +1,24 @@
-# Architecture Overview
+# Agent Studio Architecture
 
-## Components
-- **Spec Processor**: Reads user specifications from the issue tracker, validates them, and triggers the generation pipeline.
-- **Generator Core**: Runs the language model to produce HTML snippets, JSON metadata, and image prompts. Handles retries, token limits, and safety filters.
-- **Validator**: Checks generated HTML for unsafe scripts, sanitizes, and ensures compliance with the content policy.
-- **Database**: PostgreSQL table `generated_items(id SERIAL PRIMARY KEY, spec_id INT, html TEXT, metadata JSONB, created_at TIMESTAMP)` stores the final artefacts.
-- **Web Server (Caddy)**: Serves a static gallery page that safely embeds generated HTML inside an iframe sandbox. The gallery lists items from the DB.
-- **Deploy Service (Docker Compose)**: Orchestrates the database, generator, validator, and Caddy containers, providing zero‑downtime updates.
+## Overview
+Agent Studio is a web service that converts a short textual specification into a self‑contained HTML page. The system is organized into four layers:
 
-## Data Flow
-1. **Spec → Issue Tracker** – Users create a ticket with a clear goal.
-2. **Spec → Processor** – The backend polls the issue, extracts the *Goal* and *Acceptance criteria*.
-3. **Processor → Generator** – Calls the LLM with a token‑budget limit defined in `PLAN.md`.
-4. **Generator → Validator** – Sanitizes HTML, strips executable scripts, and enforces size limits.
-5. **Validator → Database** – Persists the safe HTML and associated metadata.
-6. **Database → Gallery (Caddy)** – The gallery queries the table and renders each entry inside an isolated iframe.
+1. **Front‑end (Spec UI)** – FastAPI renders a page with a spec textbox, optional style example, and a *Generate* button. Input is validated (non‑empty, ≤ 500 chars) before any model call.
+2. **Generator** – Calls a configurable LLM provider (primary and fallback URLs from env) to produce a single HTML document with inline CSS. A `mock` provider is used in tests and can be instructed to return valid or malformed pages.
+3. **Validator & Retry** – Pure Python code parses the HTML, checks required elements (title, one <h1>, ≥ 3 <section>, size ≤ 100 KB, no `<script>`/event handlers/external resources/iframes), and returns a list of human‑readable errors. On failure the errors are fed back to the generator for up to three attempts.
+4. **Persistence & Gallery** – Valid pages are stored in PostgreSQL (spec, HTML, attempt count, timestamps, version chain). The gallery lists pages newest‑first, rendering each inside an `iframe sandbox srcdoc="…"` with the most restrictive sandbox flags. A *Refine* workflow creates a new version while keeping prior versions immutable.
 
-## Isolation & Safety
-- Generated HTML is never served directly; it is always wrapped in an `<iframe sandbox="allow-scripts allow-same-origin">` to prevent XSS.
-- The validator enforces a maximum of **500 KB** per HTML blob and strips any `<script>` tags.
-- Model usage is capped per request (see `PLAN.md`) to protect the allowance and avoid runaway costs.
+### Supporting Services
+- **Caddy** terminates HTTPS on `<ip‑with‑dashes>.sslip.io` and proxies to the FastAPI app.
+- **PostgreSQL** runs via Docker Compose; schema includes a `pages` table with columns for `id`, `spec`, `html`, `attempts`, `created_at`, `parent_id`, `version`.
+- **Rate Limiting** – per‑visitor limits (5/hour, 20/day) and a configurable global daily cap are enforced before any model call.
+- **Deployment** – `deploy/install.sh` installs Docker, starts Compose, applies migrations, and ensures the service restarts on VM reboot. The script is idempotent.
 
-## Limits & Controls
-- **Model token limit**: Configured per‑run; exceeds are truncated and flagged for manual review.
-- **Retry attempts**: Hard‑capped at 3 retries before marking the ticket as blocked.
-- **Rate limiting**: The processor respects GitHub API limits and backs off on 429 responses.
-- **Database constraints**: Unique `spec_id` ensures one generated artefact per ticket.
-
-## Deployment Sketch
+### Data Flow
 ```
-services:
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: agent
-      POSTGRES_PASSWORD: secret
-  generator:
-    build: ./core/generator
-    depends_on: [db]
-  validator:
-    build: ./core/validator
-    depends_on: [generator]
-  caddy:
-    image: caddy:2
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-    depends_on: [db]
+User Spec → Front‑end validation → Generator → Validator
+        ↘︎ success → Save to DB → Gallery (iframe sandbox)
+        ↘︎ failure → Retry (max 3) → final error message
 ```
 
-This architecture enables a thin, testable pipeline where each ticket maps to a single PR implementing one of the components above.
+The architecture isolates untrusted HTML to a sandboxed iframe, guaranteeing that invalid pages are never served as top‑level content. Limits protect the model allowance and keep the system within budget.
