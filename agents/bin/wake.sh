@@ -35,7 +35,7 @@ WS="$ROOT/work/$AGENT"
 LOGDIR="$ROOT/logs/$AGENT"
 STATE="$ROOT/state"
 LEDGER="$ROOT/ledger/usage.jsonl"
-mkdir -p "$LOGDIR" "$STATE" "$ROOT/run" "$(dirname "$LEDGER")"
+mkdir -p "$LOGDIR" "$STATE" "$ROOT/run" "$ROOT/venvs" "$(dirname "$LEDGER")"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
 log() { echo "$(date -u +%FT%TZ) [$AGENT] $*" | tee -a "$ROOT/logs/wake.log"; }
@@ -67,6 +67,74 @@ dispatch_candidates() {
     | "\(.builder): #\(.number) \(.title)"'
 }
 
+# Workspace facts for a builder's ticket (pure code): which branch, what is committed, pushed, and opened as a PR.
+# Used in the builder's prompt (so a resumed run finishes instead of redoing work) and in the delivery check after.
+workspace_state() {  # $1 = issue number
+  local n="$1" br ahead dirty remote pr
+  br="$(git -C "$WS" for-each-ref --format='%(refname:short)' "refs/heads/t$n-*" | head -1)"
+  dirty="$(git -C "$WS" status --porcelain | wc -l)"
+  if [ -z "$br" ]; then
+    echo "branch: none yet for #$n; uncommitted files in workspace: $dirty"; return
+  fi
+  ahead="$(git -C "$WS" rev-list --count "origin/main..$br" 2>/dev/null || echo 0)"
+  if git -C "$WS" ls-remote --exit-code --heads origin "$br" >/dev/null 2>&1; then remote=yes; else remote=no; fi
+  pr="$(gh pr list --state open --head "$br" --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+  local junk files
+  files="$(git -C "$WS" diff --name-only "origin/main...$br" 2>/dev/null | wc -l)"
+  junk="$(git -C "$WS" diff --name-only "origin/main...$br" 2>/dev/null | grep -cE '(^|/)(\.venv|venv|__pycache__|node_modules|\.pytest_cache)/|\.pyc$' || true)"
+  echo "branch: $br; commits not on main: $ahead; files changed: $files; build artifacts committed: $junk; uncommitted files: $dirty; branch pushed to GitHub: $remote; open PR: ${pr:-none}"
+}
+
+# Rework facts for the lead (pure code): rejected tickets it owns, how many times each was rejected, and the
+# exact command to run. Rejections are counted from the reviewer/tester handoff comments on the ticket.
+requeue_actions() {
+  local n area b rejects
+  for n in $(gh issue list --state open --label agent:lead --limit 50 --json number,labels \
+              --jq '.[] | select(any(.labels[].name; . == "status:changes-requested" or . == "status:test-failed")) | .number'); do
+    area="$(gh issue view "$n" --json labels -q '[.labels[].name | select(startswith("area:")) | sub("area:"; "")][0]')"
+    b="builder-$area"
+    rejects="$(gh issue view "$n" --json comments -q '[.comments[].body | select(test("(^|\\n)\\[handoff\\] (reviewer|tester) -> lead"))] | length')"
+    if [ "$rejects" -lt 2 ]; then
+      echo "#$n rejected $rejects time(s): send back to $b as attempt $((rejects + 1)). Run exactly: gh issue edit $n --remove-label agent:lead --add-label agent:$b   (keep the status label as it is)"
+    else
+      echo "#$n rejected $rejects times: do NOT send it back. Escalate: gh issue edit $n --remove-label agent:lead --remove-label status:changes-requested --remove-label status:test-failed --add-label agent:architect --add-label status:blocked  and explain both rejections in one paragraph"
+    fi
+  done
+}
+
+board_problems() {  # prints one "- #N: ..." line per contradiction between the board and the protocol
+  local issues problems runlog
+  issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
+  problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
+    .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
+    ([.labels[].name | select(startswith("agent:"))]) as $owners |
+    ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
+    (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
+    (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
+    ([.labels[].name | select(startswith("status:"))]) as $st |
+    (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
+    ({"status:ready":["agent:builder-core","agent:builder-web"], "status:in-progress":["agent:builder-core","agent:builder-web"],
+      "status:needs-review":["agent:reviewer"], "status:needs-test":["agent:tester"],
+      "status:changes-requested":["agent:lead","agent:builder-core","agent:builder-web"],
+      "status:test-failed":["agent:lead","agent:builder-core","agent:builder-web"],
+      "status:ready-to-merge":["agent:human"], "status:blocked":["agent:architect","agent:human"]}) as $allowed |
+    (if ($st | length) == 1 and ($owners | length) == 1 and ($allowed[$st[0]] // null) != null
+          and (($allowed[$st[0]] | index($owners[0])) == null)
+       then "- #\(.number): \($st[0]) does not fit owner \($owners[0]) (expected \($allowed[$st[0]] | join(" or ")))" else empty end),
+    (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
+       then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
+    (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
+       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end),
+    (if (any(.labels[].name; startswith("agent:builder-")) and ((deps - $closed) | length) > 0)
+       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end)
+  ' <<<"$issues")"
+  runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
+  if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
+    problems+=$'\n'"- #$runlog: Run log is not pinned"
+  fi
+  sed '/^$/d' <<<"$problems"
+}
+
 PENDING=""; PHASE=""; TICKET=""
 case "$AGENT" in
   architect)
@@ -94,6 +162,10 @@ case "$AGENT" in
     # Dispatch facts are computed by code, not judged by the model: a ticket is a candidate only if the lead
     # owns it, it has no status yet, every "Depends on" issue is closed, and its area's builder holds nothing.
     CANDIDATES="$(dispatch_candidates)"
+    REQUEUE="$(requeue_actions)"
+    PENDING+=$'\n\n'"REWORK ACTIONS (computed by code; do these first, exactly as written):"$'\n'"${REQUEUE:-none}"
+    PROBLEMS="$(board_problems)"
+    PENDING+=$'\n\n'"BOARD PROBLEMS (computed by code; fix these before anything else, see item 0 of your role):"$'\n'"${PROBLEMS:-none}"
     PENDING+=$'\n\n'"DISPATCH CANDIDATES (computed by code; assign only from this list, at most one per builder):"$'\n'"${CANDIDATES:-none}"
     PHASE="planning"
     ;;
@@ -102,6 +174,19 @@ case "$AGENT" in
       --jq '.[] | select(any(.labels[].name; . == "status:ready" or . == "status:in-progress" or . == "status:changes-requested" or . == "status:test-failed"))
                 | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
     if grep -qE 'status:(changes-requested|test-failed)' <<<"$PENDING"; then PHASE="retry"; else PHASE="coding"; fi
+    if [ -n "${PENDING//[[:space:]]/}" ]; then
+      n="$(grep -oE '#[0-9]+' <<<"$PENDING" | head -1 | tr -d '#')"
+      git -C "$WS" fetch --quiet origin 2>/dev/null || true
+      WSTATE="$(workspace_state "$n")"
+      PENDING+=$'\n\n'"WORKSPACE STATE for #$n (computed by code, true as of this wake-up):"$'\n'"$WSTATE"
+      if [[ "$WSTATE" =~ open\ PR:\ ([0-9]+) ]]; then
+        PHASE="retry"
+        PENDING+=$'\n'"PR #${BASH_REMATCH[1]} already exists: this is REWORK on the same branch, not new work. Read every review and"
+        PENDING+=$'\n'"bug comment on PR #${BASH_REMATCH[1]} and #$n (gh pr view ${BASH_REMATCH[1]} --comments), fix each point, push, reply to each point."
+      else
+        PENDING+=$'\n'"If commits already exist, do not redo the work: finish it (tests, push, PR, labels, handoff)."
+      fi
+    fi
     ;;
   reviewer) PENDING="$(issues_for)"; PHASE="review" ;;
   tester)   PENDING="$(issues_for)"; PHASE="test" ;;
@@ -174,8 +259,9 @@ if [ "$RUNTIME" = openclaw ] && [ "$rc" != 0 ] && [ "$rc" != 124 ] && [ -n "$FAL
   exec 9>&-; exec 7>"$ROOT/run/provider-${FALLBACK%%/*}.lock"
   flock -w "$PROVIDER_WAIT_SEC" 7 || log "warn: ${FALLBACK%%/*} lock busy; running fallback anyway"
   set +e
+  sed "s|Model: $MODEL\.|Model: $FALLBACK (fallback; $MODEL was unavailable).|" "$PROMPT" > "$PROMPT.fb"
   ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" openclaw agent --local --agent "$AGENT" \
-      --session-id "$AGENT-$TS-fb" --message-file "$PROMPT" --model "$FALLBACK" \
+      --session-id "$AGENT-$TS-fb" --message-file "$PROMPT.fb" --model "$FALLBACK" \
       --timeout $(( RUN_TIMEOUT_MIN * 60 )) --json ) >"$OUT" 2>"$ERR"
   rc=$?
   set -e
@@ -223,28 +309,9 @@ jq -nc \
 # 7. board check (code, not a model): after a planning run, read the board back and flag contradictions,
 #    so a handoff that claims changes which did not happen is caught by the system itself.
 board_check() {
-  local issues problems runlog
-  issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
-  problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
-    .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
-    ([.labels[].name | select(startswith("agent:"))]) as $owners |
-    ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
-    (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
-    (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
-    ([.labels[].name | select(startswith("status:"))]) as $st |
-    (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
-    (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
-       then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
-    (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
-       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end),
-    (if (any(.labels[].name; startswith("agent:builder-")) and ((deps - $closed) | length) > 0)
-       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end)
-  ' <<<"$issues")"
-  runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
-  if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
-    problems+=$'\n'"- #$runlog: Run log is not pinned"
-  fi
-  problems="$(sed '/^$/d' <<<"$problems")"
+  local problems runlog
+  problems="$(board_problems)"
+  runlog="$(gh issue list --state open --limit 100 --json number,title --jq '[.[] | select(.title == "Run log")][0].number // empty')"
   [ -z "$problems" ] && { log "board-check: clean"; return 0; }
   log "board-check: $(wc -l <<<"$problems") problem(s)"
   local h; h="$(sha256sum <<<"$problems" | cut -c1-16)"
@@ -253,7 +320,21 @@ board_check() {
   [ -n "$runlog" ] && gh issue comment "$runlog" --body "[board-check | wake.sh | no model] after the $AGENT run ($TS), the board contradicts the protocol:
 $problems" >/dev/null || true
 }
-case "$AGENT" in architect|lead) board_check || log "warn: board-check failed" ;; esac
+board_check || log "warn: board-check failed"   # after every run: any agent can leave the board inconsistent
+
+# 8. delivery check (code, not a model): after a builder run, compare what the builder said with the workspace.
+#    Commits that never reached a PR are reported on the ticket; the next wake-up resumes from WORKSPACE STATE.
+if [[ "$AGENT" == builder-* ]] && [ -n "${TICKET:-}" ]; then
+  st="$(workspace_state "${TICKET#\#}")"
+  log "delivery-check: $st"
+  if [[ "$st" == *"open PR: none"* || "$st" == "branch: none"* || "$st" != *"build artifacts committed: 0;"* ]]; then
+    h="$(sha256sum <<<"$st" | cut -c1-16)"
+    if [ "$h" != "$(cat "$STATE/delivery-$AGENT.hash" 2>/dev/null)" ]; then
+      echo "$h" > "$STATE/delivery-$AGENT.hash"
+      gh issue comment "${TICKET#\#}" --body "[delivery-check | wake.sh | no model] after the $AGENT run ($TS): $st. A ticket is delivered only with an open PR and no committed build artifacts (.venv, __pycache__, *.pyc). The next wake-up resumes from this state." >/dev/null || true
+    fi
+  fi
+fi
 
 [ "$AGENT" = lead ] && [ "$status" = ok ] && echo "$fp" > "$STATE/lead.fp"
 log "end: $status in ${secs}s, tokens=${p_total} (new in=${p_in}, cached in=${p_cache}, out=${p_out})"

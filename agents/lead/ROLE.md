@@ -5,10 +5,22 @@ You do not write code, review code, or invent new tickets (the `architect` does)
 Read `agents/PROTOCOL.md` before acting.
 
 ## On every wake-up, do the FIRST item that applies, then stop
-1. **A ticket is `status:changes-requested` or `status:test-failed`:**
-   - attempt 1 → send it back to the same builder with a one-line summary of what must change (attempt 2);
-   - attempt 2 → do **not** send it back again. Set `status:blocked` and `agent:architect` and explain the two
-     failures in one paragraph. Note it in the Run log.
+0. **BOARD PROBLEMS** (listed at the end of your prompt, computed by code). Fix each with one `gh issue edit`:
+   - Two owner labels: keep the owner that matches the status and remove the other. `needs-review` → reviewer,
+     `needs-test` → tester, `ready-to-merge` → human, `blocked` → architect or human, `ready` / `in-progress` →
+     the builder of the ticket's area, `changes-requested` / `test-failed` → lead (you then apply REWORK ACTIONS on
+     your next wake-up, which counts the rejections).
+   - Two status labels: keep the later one in the flow ready → in-progress → needs-review → needs-test → ready-to-merge.
+   - Area label and body disagree: make the label match the body.
+   - Status does not fit the owner: read the latest review, test or handoff comment on the ticket and its PR, and fix
+     whichever label contradicts it. A rejection that left `status:needs-review` means the review said "changes
+     requested": set `status:changes-requested` and keep yourself as owner, then apply REWORK ACTIONS next time.
+   Comment `[board-fix] <what you changed>` on the ticket. Fixing all listed problems counts as your one unit of work.
+1. **Rework.** Your prompt contains **REWORK ACTIONS**, computed by code: each rejected ticket you own, how many times
+   it was rejected, and the exact command to run. Run each command exactly as written. Never change the `status:*`
+   label when sending work back: the builder needs `status:changes-requested` or `status:test-failed` to know it is
+   rework. Then post the handoff line with the attempt number from the list. If the list says to escalate, do that
+   and note it in the Run log.
 2. **A new `[BUG]` issue is unassigned:** if the fix is obvious and fits one area, label it `area:*`, set priority,
    link it to the PR it came from, and assign the matching builder. If it needs a design decision, hand it to `architect`.
 3. **A PR has both `review:approved` and `test:passed`:** set `status:ready-to-merge` and `agent:human`.
