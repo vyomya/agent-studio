@@ -35,7 +35,7 @@ WS="$ROOT/work/$AGENT"
 LOGDIR="$ROOT/logs/$AGENT"
 STATE="$ROOT/state"
 LEDGER="$ROOT/ledger/usage.jsonl"
-mkdir -p "$LOGDIR" "$STATE" "$ROOT/run" "$(dirname "$LEDGER")"
+mkdir -p "$LOGDIR" "$STATE" "$ROOT/run" "$ROOT/venvs" "$(dirname "$LEDGER")"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
 log() { echo "$(date -u +%FT%TZ) [$AGENT] $*" | tee -a "$ROOT/logs/wake.log"; }
@@ -79,7 +79,10 @@ workspace_state() {  # $1 = issue number
   ahead="$(git -C "$WS" rev-list --count "origin/main..$br" 2>/dev/null || echo 0)"
   if git -C "$WS" ls-remote --exit-code --heads origin "$br" >/dev/null 2>&1; then remote=yes; else remote=no; fi
   pr="$(gh pr list --state open --head "$br" --json number --jq '.[0].number // empty' 2>/dev/null || true)"
-  echo "branch: $br; commits not on main: $ahead; uncommitted files: $dirty; branch pushed to GitHub: $remote; open PR: ${pr:-none}"
+  local junk files
+  files="$(git -C "$WS" diff --name-only "origin/main...$br" 2>/dev/null | wc -l)"
+  junk="$(git -C "$WS" diff --name-only "origin/main...$br" 2>/dev/null | grep -cE '(^|/)(\.venv|venv|__pycache__|node_modules|\.pytest_cache)/|\.pyc$' || true)"
+  echo "branch: $br; commits not on main: $ahead; files changed: $files; build artifacts committed: $junk; uncommitted files: $dirty; branch pushed to GitHub: $remote; open PR: ${pr:-none}"
 }
 
 PENDING=""; PHASE=""; TICKET=""
@@ -275,18 +278,18 @@ board_check() {
   [ -n "$runlog" ] && gh issue comment "$runlog" --body "[board-check | wake.sh | no model] after the $AGENT run ($TS), the board contradicts the protocol:
 $problems" >/dev/null || true
 }
-case "$AGENT" in architect|lead) board_check || log "warn: board-check failed" ;; esac
+board_check || log "warn: board-check failed" 
 
 # 8. delivery check (code, not a model): after a builder run, compare what the builder said with the workspace.
 #    Commits that never reached a PR are reported on the ticket; the next wake-up resumes from WORKSPACE STATE.
 if [[ "$AGENT" == builder-* ]] && [ -n "${TICKET:-}" ]; then
   st="$(workspace_state "${TICKET#\#}")"
   log "delivery-check: $st"
-  if [[ "$st" == *"open PR: none"* || "$st" == "branch: none"* ]]; then
+  if [[ "$st" == *"open PR: none"* || "$st" == "branch: none"* || "$st" != *"build artifacts committed: 0;"* ]]; then
     h="$(sha256sum <<<"$st" | cut -c1-16)"
     if [ "$h" != "$(cat "$STATE/delivery-$AGENT.hash" 2>/dev/null)" ]; then
       echo "$h" > "$STATE/delivery-$AGENT.hash"
-      gh issue comment "${TICKET#\#}" --body "[delivery-check | wake.sh | no model] after the $AGENT run ($TS): $st. No PR exists yet, so the ticket is not delivered. The next wake-up resumes from this state." >/dev/null || true
+      gh issue comment "${TICKET#\#}" --body "[delivery-check | wake.sh | no model] after the $AGENT run ($TS): $st. A ticket is delivered only with an open PR and no committed build artifacts (.venv, __pycache__, *.pyc). The next wake-up resumes from this state." >/dev/null || true
     fi
   fi
 fi
