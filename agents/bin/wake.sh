@@ -67,6 +67,21 @@ dispatch_candidates() {
     | "\(.builder): #\(.number) \(.title)"'
 }
 
+# Workspace facts for a builder's ticket (pure code): which branch, what is committed, pushed, and opened as a PR.
+# Used in the builder's prompt (so a resumed run finishes instead of redoing work) and in the delivery check after.
+workspace_state() {  # $1 = issue number
+  local n="$1" br ahead dirty remote pr
+  br="$(git -C "$WS" for-each-ref --format='%(refname:short)' "refs/heads/t$n-*" | head -1)"
+  dirty="$(git -C "$WS" status --porcelain | wc -l)"
+  if [ -z "$br" ]; then
+    echo "branch: none yet for #$n; uncommitted files in workspace: $dirty"; return
+  fi
+  ahead="$(git -C "$WS" rev-list --count "origin/main..$br" 2>/dev/null || echo 0)"
+  if git -C "$WS" ls-remote --exit-code --heads origin "$br" >/dev/null 2>&1; then remote=yes; else remote=no; fi
+  pr="$(gh pr list --state open --head "$br" --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+  echo "branch: $br; commits not on main: $ahead; uncommitted files: $dirty; branch pushed to GitHub: $remote; open PR: ${pr:-none}"
+}
+
 PENDING=""; PHASE=""; TICKET=""
 case "$AGENT" in
   architect)
@@ -102,6 +117,12 @@ case "$AGENT" in
       --jq '.[] | select(any(.labels[].name; . == "status:ready" or . == "status:in-progress" or . == "status:changes-requested" or . == "status:test-failed"))
                 | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
     if grep -qE 'status:(changes-requested|test-failed)' <<<"$PENDING"; then PHASE="retry"; else PHASE="coding"; fi
+    if [ -n "${PENDING//[[:space:]]/}" ]; then
+      n="$(grep -oE '#[0-9]+' <<<"$PENDING" | head -1 | tr -d '#')"
+      git -C "$WS" fetch --quiet origin 2>/dev/null || true
+      PENDING+=$'\n\n'"WORKSPACE STATE for #$n (computed by code, true as of this wake-up):"$'\n'"$(workspace_state "$n")"
+      PENDING+=$'\n'"If commits already exist, do not redo the work: finish it (tests, push, PR, labels, handoff)."
+    fi
     ;;
   reviewer) PENDING="$(issues_for)"; PHASE="review" ;;
   tester)   PENDING="$(issues_for)"; PHASE="test" ;;
@@ -174,8 +195,9 @@ if [ "$RUNTIME" = openclaw ] && [ "$rc" != 0 ] && [ "$rc" != 124 ] && [ -n "$FAL
   exec 9>&-; exec 7>"$ROOT/run/provider-${FALLBACK%%/*}.lock"
   flock -w "$PROVIDER_WAIT_SEC" 7 || log "warn: ${FALLBACK%%/*} lock busy; running fallback anyway"
   set +e
+  sed "s|Model: $MODEL\.|Model: $FALLBACK (fallback; $MODEL was unavailable).|" "$PROMPT" > "$PROMPT.fb"
   ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" openclaw agent --local --agent "$AGENT" \
-      --session-id "$AGENT-$TS-fb" --message-file "$PROMPT" --model "$FALLBACK" \
+      --session-id "$AGENT-$TS-fb" --message-file "$PROMPT.fb" --model "$FALLBACK" \
       --timeout $(( RUN_TIMEOUT_MIN * 60 )) --json ) >"$OUT" 2>"$ERR"
   rc=$?
   set -e
@@ -254,6 +276,20 @@ board_check() {
 $problems" >/dev/null || true
 }
 case "$AGENT" in architect|lead) board_check || log "warn: board-check failed" ;; esac
+
+# 8. delivery check (code, not a model): after a builder run, compare what the builder said with the workspace.
+#    Commits that never reached a PR are reported on the ticket; the next wake-up resumes from WORKSPACE STATE.
+if [[ "$AGENT" == builder-* ]] && [ -n "${TICKET:-}" ]; then
+  st="$(workspace_state "${TICKET#\#}")"
+  log "delivery-check: $st"
+  if [[ "$st" == *"open PR: none"* || "$st" == "branch: none"* ]]; then
+    h="$(sha256sum <<<"$st" | cut -c1-16)"
+    if [ "$h" != "$(cat "$STATE/delivery-$AGENT.hash" 2>/dev/null)" ]; then
+      echo "$h" > "$STATE/delivery-$AGENT.hash"
+      gh issue comment "${TICKET#\#}" --body "[delivery-check | wake.sh | no model] after the $AGENT run ($TS): $st. No PR exists yet, so the ticket is not delivered. The next wake-up resumes from this state." >/dev/null || true
+    fi
+  fi
+fi
 
 [ "$AGENT" = lead ] && [ "$status" = ok ] && echo "$fp" > "$STATE/lead.fp"
 log "end: $status in ${secs}s, tokens=${p_total} (new in=${p_in}, cached in=${p_cache}, out=${p_out})"
