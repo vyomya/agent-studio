@@ -53,6 +53,12 @@ class _TagCollector(HTMLParser):
         self.iframe_present = False
         self.external_links: List[str] = []
         self.external_images: List[str] = []
+        # New collections for additional validation rules
+        self.inline_event_handlers: List[tuple[str, str]] = []  # (tag, attribute)
+        self.javascript_urls: List[tuple[str, str]] = []  # (tag, attribute)
+        self.css_issues: List[str] = []  # descriptions of CSS problems
+        self.forbidden_tags: List[str] = []  # e.g., object, embed, meta[refresh]
+        self._in_style = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_low = tag.lower()
@@ -74,14 +80,50 @@ class _TagCollector(HTMLParser):
             src = dict(attrs).get("src", "")
             if _is_absolute_url(src):
                 self.external_images.append(src)
+            # Detect javascript: URLs in img src
+            if src and src.strip().lower().startswith("javascript:"):
+                self.javascript_urls.append((tag_low, "src"))
+        elif tag_low == "style":
+            # Enter style tag to capture its inner CSS content
+            self._in_style = True
+
+        # Detect forbidden tags immediately
+        if tag_low in {"object", "embed"}:
+            self.forbidden_tags.append(tag_low)
+        if tag_low == "meta":
+            attrs_dict = dict(attrs)
+            if attrs_dict.get("http-equiv", "").lower() == "refresh":
+                self.forbidden_tags.append("meta[http-equiv=refresh]")
+
+        # Scan attributes for inline event handlers and javascript: schemes
+        for name, value in attrs:
+            if not value:
+                continue
+            name_low = name.lower()
+            # Inline event handlers (e.g., onclick, onmouseover)
+            if name_low.startswith("on"):
+                self.inline_event_handlers.append((tag_low, name_low))
+            # javascript: URLs in any attribute (scheme detection independent of URL type)
+            if value.strip().lower().startswith("javascript:"):
+                self.javascript_urls.append((tag_low, name_low))
+            # Style attribute: check for CSS url(...) or @import
+            if name_low == "style":
+                if re.search(r"url\s*\(", value, re.IGNORECASE) or re.search(r"@import", value, re.IGNORECASE):
+                    self.css_issues.append(f"style attribute in <{tag_low}> contains disallowed CSS")
 
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() == "title":
             self._in_title = False
+        if tag.lower() == "style":
+            self._in_style = False
 
     def handle_data(self, data: str) -> None:
         if self._in_title:
             self.titles.append(data)
+        # Capture CSS inside <style> tag content
+        if self._in_style:
+            if re.search(r"url\s*\(", data, re.IGNORECASE) or re.search(r"@import", data, re.IGNORECASE):
+                self.css_issues.append("<style> tag contains disallowed CSS")
 
 
 def _is_absolute_url(url: str) -> bool:
@@ -150,6 +192,22 @@ def validate_html(html: str) -> List[str]:
         errors.append("External <link> resources are prohibited.")
     if parser.external_images:
         errors.append("External <img> sources are prohibited.")
+
+    # 8. Inline event handlers (attributes starting with 'on').
+    for tag, attr in parser.inline_event_handlers:
+        errors.append(f"Inline event handler attribute '{attr}' found on <{tag}> tag.")
+
+    # 9. javascript: URLs in any attribute.
+    for tag, attr in parser.javascript_urls:
+        errors.append(f"javascript: URL found in attribute '{attr}' on <{tag}> tag.")
+
+    # 10. Disallowed CSS constructs (url(...) or @import) in style tags or attributes.
+    for issue in parser.css_issues:
+        errors.append(issue)
+
+    # 11. Forbidden tags: <object>, <embed>, and <meta http-equiv='refresh'>.
+    for tag in parser.forbidden_tags:
+        errors.append(f"Forbidden tag '<{tag}>' is not allowed.")
 
     return errors
 

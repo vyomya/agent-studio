@@ -78,3 +78,68 @@ def test_oversized_html():
     errors = validate_html(html)
     assert any("size" in e.lower() for e in errors)
 
+def test_inline_event_handler():
+    """Validator should flag any attribute that starts with ``on`` (e.g., ``onclick``)."""
+    html = _make_html(body="<div onclick='alert(1)'>Click</div>")
+    errors = validate_html(html)
+    # The error message includes the attribute name and tag.
+    assert any("onclick" in e.lower() or "inline event" in e.lower() for e in errors)
+
+def test_javascript_url():
+    """Validator should reject ``javascript:`` URLs in any attribute value."""
+    html = _make_html(body="<a href='javascript:alert(1)'>bad</a>")
+    errors = validate_html(html)
+    assert any("javascript" in e.lower() for e in errors)
+
+def test_css_in_style_attribute():
+    """Validator should detect disallowed CSS constructs in a ``style`` attribute."""
+    html = _make_html(body="<div style='background:url(http://example.com/bg.png)'>test</div>")
+    errors = validate_html(html)
+    # The implementation flags CSS problems with a generic message; we accept either.
+    assert any("css" in e.lower() for e in errors) or any("style attribute" in e.lower() for e in errors)
+
+def test_css_in_style_tag():
+    """Validator should detect disallowed CSS in a ``<style>`` block.
+
+    Both ``url(...)`` and ``@import`` are prohibited.
+    """
+    css = "<style>body { background: url('http://example.com/bg.png'); @import url('foo.css'); }</style>"
+    html = _make_html(body=css)
+    errors = validate_html(html)
+    assert any("css" in e.lower() for e in errors) or any("style" in e.lower() for e in errors)
+
+def test_inline_event_handler():
+    html = _make_html(body="<div onclick='alert(1)'>Click</div>")
+    errors = validate_html(html)
+    # Should flag the inline event handler attribute
+    assert any("inline event" in e.lower() for e in errors)
+
+def test_javascript_url():
+    html = _make_html(body="<a href='javascript:alert(1)'>bad</a>")
+    errors = validate_html(html)
+    assert any("javascript" in e.lower() for e in errors)
+
+def test_css_in_style_attribute():
+    html = _make_html(body="<div style='background:url(http://example.com/bg.png)'>test</div>")
+    errors = validate_html(html)
+    assert any("css" in e.lower() for e in errors) or any("style attribute" in e.lower() for e in errors)
+
+def test_css_in_style_tag():
+    css = "<style>body { background: url('http://example.com/bg.png'); @import url('foo.css'); }</style>"
+    html = _make_html(body=css)
+    errors = validate_html(html)
+    assert any("css" in e.lower() for e in errors) or any("style" in e.lower() for e in errors)
+
+def test_forbidden_tags():
+    body = (
+        "<object data='movie.swf'></object>"
+        "<embed src='video.mp4'>"
+        "<meta http-equiv='refresh' content='0;url=https://example.com'>"
+    )
+    html = _make_html(body=body)
+    errors = validate_html(html)
+    # Ensure each forbidden tag is reported
+    assert any("object" in e.lower() for e in errors)
+    assert any("embed" in e.lower() for e in errors)
+    assert any("meta" in e.lower() and "refresh" in e.lower() for e in errors)
+
