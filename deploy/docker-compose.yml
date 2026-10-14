@@ -1,0 +1,7 @@
+version: "3.8"
+
+services:
+  placeholder:
+    image: alpine:latest
+    command: ["sh", "-c", "echo Placeholder service running; sleep infinity"]
+    restart: unless-stopped
