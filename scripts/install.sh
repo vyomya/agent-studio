@@ -83,7 +83,7 @@ for a in $AGENTS; do
       ;;
     openclaw)
       # VERIFY: registers the agent so it shows in the OpenClaw roster and dashboard; wake.sh runs it headless.
-      as_agents "openclaw agents list 2>/dev/null | grep -qw '$a' || openclaw agents add '$a' --model '$model' ${fb:+--fallback-model '$fb'} --workspace '$ROOT/work/$a'"
+      as_agents "openclaw agents list 2>/dev/null | grep -qw '$a' || openclaw agents add '$a' --model '$model' --workspace '$ROOT/work/$a'"
       ;;
   esac
 done
