@@ -102,6 +102,31 @@ requeue_actions() {
   done
 }
 
+board_problems() {  # prints one "- #N: ..." line per contradiction between the board and the protocol
+  local issues problems runlog
+  issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
+  problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
+    .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
+    ([.labels[].name | select(startswith("agent:"))]) as $owners |
+    ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
+    (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
+    (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
+    ([.labels[].name | select(startswith("status:"))]) as $st |
+    (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
+    (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
+       then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
+    (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
+       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end),
+    (if (any(.labels[].name; startswith("agent:builder-")) and ((deps - $closed) | length) > 0)
+       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end)
+  ' <<<"$issues")"
+  runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
+  if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
+    problems+=$'\n'"- #$runlog: Run log is not pinned"
+  fi
+  sed '/^$/d' <<<"$problems"
+}
+
 PENDING=""; PHASE=""; TICKET=""
 case "$AGENT" in
   architect)
@@ -275,30 +300,6 @@ jq -nc \
 
 # 7. board check (code, not a model): after a planning run, read the board back and flag contradictions,
 #    so a handoff that claims changes which did not happen is caught by the system itself.
-board_problems() {  # prints one "- #N: ..." line per contradiction between the board and the protocol
-  local issues problems runlog
-  issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
-  problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
-    .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
-    ([.labels[].name | select(startswith("agent:"))]) as $owners |
-    ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
-    (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
-    (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
-    ([.labels[].name | select(startswith("status:"))]) as $st |
-    (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
-    (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
-       then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
-    (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
-       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end),
-    (if (any(.labels[].name; startswith("agent:builder-")) and ((deps - $closed) | length) > 0)
-       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end)
-  ' <<<"$issues")"
-  runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
-  if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
-    problems+=$'\n'"- #$runlog: Run log is not pinned"
-  fi
-  sed '/^$/d' <<<"$problems"
-}
 board_check() {
   local problems runlog
   problems="$(board_problems)"
