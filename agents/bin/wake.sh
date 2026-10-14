@@ -17,6 +17,7 @@ DRY="${2:-}"
 ROOT="${AGENT_STUDIO_ROOT:-/srv/agent-studio}"
 
 # shellcheck source=/dev/null
+if [ -f "$ROOT/path.env" ]; then set -a; . "$ROOT/path.env"; set +a; fi
 source "$ROOT/agents/agents.conf"
 set -a
 # shellcheck source=/dev/null
