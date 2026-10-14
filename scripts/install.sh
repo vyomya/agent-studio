@@ -69,7 +69,9 @@ for a in $AGENTS; do
     git -C $ROOT/work/$a config user.name  '$a ($rt)'
     git -C $ROOT/work/$a config user.email '$a@agents.agent-studio.local'"
 done
-as_agents "set -a; . $ROOT/.env; set +a; gh auth setup-git"
+as_agents "set -a; . $ROOT/.env; set +a
+  printf '%s' \"\$GH_TOKEN\" | env -u GH_TOKEN gh auth login --hostname github.com --with-token
+  env -u GH_TOKEN gh auth setup-git"
 
 step "Registering agents in their runtimes"
 for a in $AGENTS; do

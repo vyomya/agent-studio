@@ -141,36 +141,39 @@ case $rc in 0) status=ok ;; 124) status=timeout ;; *) status=error ;; esac
 
 # 6. token ledger (numbers come from the runtime's own usage report; null when it gives none)
 num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && printf '%s' "$1" || printf 'null'; }
-p_in=""; p_out=""; p_total=""; r_model="$MODEL"; r_provider="$PROVIDER"
+p_in=""; p_out=""; p_cache=""; p_total=""; r_model="$MODEL"; r_provider="$PROVIDER"
 if [ "$RUNTIME" = openclaw ] && [ -s "$OUT" ]; then
   # OpenClaw may print log lines around its JSON; keep only the JSON object (first "{" line to first "}" line).
   awk '/^\{/{f=1} f{print} f&&/^\}/{exit}' "$OUT" > "$OUT.json"
   p_in="$(jq -r '.meta.agentMeta.usage.input // empty' "$OUT.json" 2>/dev/null || true)"
   p_out="$(jq -r '.meta.agentMeta.usage.output // empty' "$OUT.json" 2>/dev/null || true)"
+  p_cache="$(jq -r '.meta.agentMeta.usage.cacheRead // empty' "$OUT.json" 2>/dev/null || true)"
   p_total="$(jq -r '.meta.agentMeta.usage.total // empty' "$OUT.json" 2>/dev/null || true)"
   r_model="$(jq -r '.meta.agentMeta.model // empty' "$OUT.json" 2>/dev/null || true)"; r_model="${r_model:-$MODEL}"
   r_provider="$(jq -r '.meta.agentMeta.provider // empty' "$OUT.json" 2>/dev/null || true)"; r_provider="${r_provider:-$PROVIDER}"
 elif [ "$RUNTIME" = hermes ] && [ -s "$USAGE" ]; then
   p_in="$(jq -r '.input_tokens // empty' "$USAGE" 2>/dev/null || true)"
+  p_cache="$(jq -r '.cache_read_tokens // empty' "$USAGE" 2>/dev/null || true)"
   p_out="$(jq -r '.output_tokens // empty' "$USAGE" 2>/dev/null || true)"
   # includes Hermes' own side calls (title generation), so the ledger shows the real spend
   p_total="$(jq -r '.total_including_auxiliary.total_tokens // .total_tokens // empty' "$USAGE" 2>/dev/null || true)"
   r_model="$(jq -r '.model // empty' "$USAGE" 2>/dev/null || true)"; r_model="${r_model:-$MODEL}"
 fi
-p_in="$(num "$p_in")"; p_out="$(num "$p_out")"; p_total="$(num "$p_total")"
+p_in="$(num "$p_in")"; p_out="$(num "$p_out")"; p_cache="$(num "$p_cache")"; p_total="$(num "$p_total")"
 if [ "$p_total" = null ] && [ "$p_in" != null ] && [ "$p_out" != null ]; then p_total=$(( p_in + p_out )); fi
 
 jq -nc \
   --arg ts "$(date -u +%FT%TZ)" --arg agent "$AGENT" --arg runtime "$RUNTIME" \
   --arg provider "$r_provider" --arg model "$r_model" --arg ticket "${TICKET:-}" --arg phase "$PHASE" \
   --arg status "$status" --argjson seconds "$secs" \
-  --argjson prompt_tokens "$p_in" --argjson completion_tokens "$p_out" --argjson total_tokens "$p_total" \
+  --argjson prompt_tokens "$p_in" --argjson completion_tokens "$p_out" --argjson cache_read_tokens "$p_cache" \
+  --argjson total_tokens "$p_total" \
   --arg log "$OUT" \
   '{ts:$ts, agent:$agent, runtime:$runtime, provider:$provider, model:$model, ticket:$ticket, phase:$phase,
-    prompt_tokens:$prompt_tokens, completion_tokens:$completion_tokens, total_tokens:$total_tokens,
+    prompt_tokens:$prompt_tokens, completion_tokens:$completion_tokens, cache_read_tokens:$cache_read_tokens,total_tokens:$total_tokens,
     status:$status, seconds:$seconds, source:(if $total_tokens == null then "missing" else "runtime" end), log:$log}' \
   >> "$LEDGER"
 
 [ "$AGENT" = lead ] && [ "$status" = ok ] && echo "$fp" > "$STATE/lead.fp"
-log "end: $status in ${secs}s, tokens=${p_total} (in=${p_in}, out=${p_out})"
+log "end: $status in ${secs}s, tokens=${p_total} (new in=${p_in}, cached in=${p_cache}, out=${p_out})"
 exit 0
