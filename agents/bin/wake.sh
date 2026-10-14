@@ -164,6 +164,24 @@ esac
 rc=$?
 set -e
 secs=$(( $(date +%s) - start ))
+# Fallback done by this script, not the runtime (OpenClaw 2026.10.3 has no per-run fallback flag):
+# if the model was overloaded or out of quota, run once more on FALLBACK. The workspace keeps any partial work.
+if [ "$RUNTIME" = openclaw ] && [ "$rc" != 0 ] && [ "$rc" != 124 ] && [ -n "$FALLBACK" ] &&
+   grep -qiE 'overloaded|high demand|503|429|RESOURCE_EXHAUSTED|quota' "$OUT" "$ERR" 2>/dev/null; then
+  log "fallback: $MODEL unavailable (rc=$rc); retrying once on $FALLBACK"
+  mv "$OUT" "$OUT.primary"; mv "$ERR" "$ERR.primary"
+  # The fallback model has its own lock group (the part before "/"), shared with any agent that uses it.
+  exec 9>&-; exec 7>"$ROOT/run/provider-${FALLBACK%%/*}.lock"
+  flock -w "$PROVIDER_WAIT_SEC" 7 || log "warn: ${FALLBACK%%/*} lock busy; running fallback anyway"
+  set +e
+  ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" openclaw agent --local --agent "$AGENT" \
+      --session-id "$AGENT-$TS-fb" --message-file "$PROMPT" --model "$FALLBACK" \
+      --timeout $(( RUN_TIMEOUT_MIN * 60 )) --json ) >"$OUT" 2>"$ERR"
+  rc=$?
+  set -e
+  MODEL="$FALLBACK"
+  secs=$(( $(date +%s) - start ))
+fi
 case $rc in 0) status=ok ;; 124) status=timeout ;; *) status=error ;; esac
 
 # 6. token ledger (numbers come from the runtime's own usage report; null when it gives none)
@@ -213,9 +231,8 @@ board_check() {
     ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
     (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
     (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
-      ([.labels[].name | select(startswith("status:"))]) as $st |
-    (if ($st | length) > 1 then "- #\(.number): several status labels \
-    ($st) (must be at most one)" else empty end),
+    ([.labels[].name | select(startswith("status:"))]) as $st |
+    (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
     (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
        then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
     (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
