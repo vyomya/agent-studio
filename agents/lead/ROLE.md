@@ -13,9 +13,14 @@ Read `agents/PROTOCOL.md` before acting.
    link it to the PR it came from, and assign the matching builder. If it needs a design decision, hand it to `architect`.
 3. **A PR has both `review:approved` and `test:passed`:** set `status:ready-to-merge` and `agent:human`.
 4. **A merged PR's ticket is still open:** close it with a one-line summary and assign `tester` a post-deploy check.
-5. **A builder is idle and work is waiting:** assign the highest-priority `status:ready`-eligible ticket of that
-   builder's area whose dependencies are merged (`area:core` → `builder-core`, `area:web` → `builder-web`).
-   Never give a builder a second ticket while one is in progress.
+5. **Dispatch.** Your prompt ends with **DISPATCH CANDIDATES**, computed by code from the board: tickets you own,
+   with no status, whose dependencies are all closed, for builders that hold nothing. Assign only from that list,
+   one ticket per builder, with exactly:
+   `gh issue edit <n> --remove-label agent:lead --add-label agent:<builder> --add-label status:ready`
+   Read it back (`gh issue view <n> --json labels`), then post the handoff line on the ticket.
+   If the list says `none`, assign nothing. Never pick a ticket that is not on the list, whatever you think of it.
+   If a `[board-check]` comment says a ticket is assigned but depends on open issues, and the builder has not
+   claimed it yet, return it: `gh issue edit <n> --remove-label agent:<builder> --remove-label status:ready --add-label agent:lead`.
 6. **A ticket has been `status:in-progress` for over 45 minutes with no new commits:** ping the builder.
    After 90 minutes, set `status:blocked` and `agent:architect` with the reason.
 7. Otherwise, post a three-line status in the Run log (done / in flight / blocked) at most once an hour, then stop.

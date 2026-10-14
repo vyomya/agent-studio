@@ -16,8 +16,9 @@ AGENT="${1:?usage: wake.sh <agent> [--dry-run]}"
 DRY="${2:-}"
 ROOT="${AGENT_STUDIO_ROOT:-/srv/agent-studio}"
 
-# shellcheck source=/dev/null
+# Same PATH as the systemd unit, so manual runs (sudo -u agents ...) find openclaw and hermes too.
 if [ -f "$ROOT/path.env" ]; then set -a; . "$ROOT/path.env"; set +a; fi
+# shellcheck source=/dev/null
 source "$ROOT/agents/agents.conf"
 set -a
 # shellcheck source=/dev/null
@@ -49,9 +50,28 @@ issues_for() {  # issues currently owned by this agent, one "#N title [labels]" 
     --jq '.[] | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"'
 }
 
+# Dependency facts shared by the lead's dispatch list and the board check (pure code, no model).
+# "Depends on" is the line after the "## Depends on" heading; every #N there must be a closed issue.
+JQ_DEPS='def deps: ([((.body // "") | capture("## Depends on[^\\n]*\\n(?<d>[^\\n]*)") | .d)? // "" | scan("#([0-9]+)") | .[0] | tonumber]);'
+closed_issues() { gh issue list --state closed --limit 300 --json number --jq '[.[].number]'; }
+dispatch_candidates() {
+  gh issue list --state open --limit 100 --json number,title,labels,body |
+  jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
+    ([.[] | .labels[].name | select(startswith("agent:builder-"))]) as $busy |
+    [ .[] | select(any(.labels[].name; . == "agent:lead") and any(.labels[].name; . == "type:feature")
+                   and (any(.labels[].name; startswith("status:")) | not))
+          | select((deps - $closed) | length == 0)
+          | . + {builder: ("builder-" + ([.labels[].name | select(startswith("area:")) | sub("area:"; "")][0] // "?"))}
+          | .builder as $b | select(($busy | any(.[]; . == "agent:" + $b)) | not) ]
+    | sort_by(.number) | group_by(.builder) | .[] | .[0]
+    | "\(.builder): #\(.number) \(.title)"'
+}
+
 PENDING=""; PHASE=""; TICKET=""
 case "$AGENT" in
   architect)
+    # Only real architect work: blocked tickets, bugs, and [human] requests. Plain tickets that still carry
+    # agent:architect by mistake must not wake it every 10 minutes.
     PENDING="$(gh issue list --state open --label agent:architect --limit 50 --json number,title,labels \
       --jq '.[] | select(any(.labels[].name; . == "status:blocked" or . == "type:bug") or (.title | startswith("[human]")))
                 | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
@@ -71,6 +91,10 @@ case "$AGENT" in
     fi
     PENDING="$(gh issue list --state open --limit 100 --json number,title,labels \
       --jq '.[] | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
+    # Dispatch facts are computed by code, not judged by the model: a ticket is a candidate only if the lead
+    # owns it, it has no status yet, every "Depends on" issue is closed, and its area's builder holds nothing.
+    CANDIDATES="$(dispatch_candidates)"
+    PENDING+=$'\n\n'"DISPATCH CANDIDATES (computed by code; assign only from this list, at most one per builder):"$'\n'"${CANDIDATES:-none}"
     PHASE="planning"
     ;;
   builder-*)
@@ -126,6 +150,7 @@ start="$(date +%s)"
 set +e
 case "$RUNTIME" in
   openclaw)
+    # --local: embedded run, no gateway daemon. Fresh session id per run so context never piles up across wake-ups.
     ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" openclaw agent --local --agent "$AGENT" \
         --session-id "$AGENT-$TS" --message-file "$PROMPT" --model "$MODEL" \
         --timeout $(( RUN_TIMEOUT_MIN * 60 )) --json ) >"$OUT" 2>"$ERR"
@@ -155,8 +180,8 @@ if [ "$RUNTIME" = openclaw ] && [ -s "$OUT" ]; then
   r_provider="$(jq -r '.meta.agentMeta.provider // empty' "$OUT.json" 2>/dev/null || true)"; r_provider="${r_provider:-$PROVIDER}"
 elif [ "$RUNTIME" = hermes ] && [ -s "$USAGE" ]; then
   p_in="$(jq -r '.input_tokens // empty' "$USAGE" 2>/dev/null || true)"
-  p_cache="$(jq -r '.cache_read_tokens // empty' "$USAGE" 2>/dev/null || true)"
   p_out="$(jq -r '.output_tokens // empty' "$USAGE" 2>/dev/null || true)"
+  p_cache="$(jq -r '.cache_read_tokens // empty' "$USAGE" 2>/dev/null || true)"
   # includes Hermes' own side calls (title generation), so the ledger shows the real spend
   p_total="$(jq -r '.total_including_auxiliary.total_tokens // .total_tokens // empty' "$USAGE" 2>/dev/null || true)"
   r_model="$(jq -r '.model // empty' "$USAGE" 2>/dev/null || true)"; r_model="${r_model:-$MODEL}"
@@ -172,15 +197,17 @@ jq -nc \
   --argjson total_tokens "$p_total" \
   --arg log "$OUT" \
   '{ts:$ts, agent:$agent, runtime:$runtime, provider:$provider, model:$model, ticket:$ticket, phase:$phase,
-    prompt_tokens:$prompt_tokens, completion_tokens:$completion_tokens, cache_read_tokens:$cache_read_tokens,total_tokens:$total_tokens,
+    prompt_tokens:$prompt_tokens, completion_tokens:$completion_tokens, cache_read_tokens:$cache_read_tokens,
+    total_tokens:$total_tokens,
     status:$status, seconds:$seconds, source:(if $total_tokens == null then "missing" else "runtime" end), log:$log}' \
   >> "$LEDGER"
+
 # 7. board check (code, not a model): after a planning run, read the board back and flag contradictions,
 #    so a handoff that claims changes which did not happen is caught by the system itself.
 board_check() {
   local issues problems runlog
   issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
-  problems="$(jq -r '
+  problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
     .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
     ([.labels[].name | select(startswith("agent:"))]) as $owners |
     ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
@@ -189,7 +216,9 @@ board_check() {
     (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
        then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
     (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
-       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end)
+       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end),
+    (if (any(.labels[].name; startswith("agent:builder-")) and ((deps - $closed) | length) > 0)
+       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end)
   ' <<<"$issues")"
   runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
   if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
@@ -205,6 +234,7 @@ board_check() {
 $problems" >/dev/null || true
 }
 case "$AGENT" in architect|lead) board_check || log "warn: board-check failed" ;; esac
+
 [ "$AGENT" = lead ] && [ "$status" = ok ] && echo "$fp" > "$STATE/lead.fp"
 log "end: $status in ${secs}s, tokens=${p_total} (new in=${p_in}, cached in=${p_cache}, out=${p_out})"
 exit 0
