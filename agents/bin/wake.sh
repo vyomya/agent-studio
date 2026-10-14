@@ -97,7 +97,7 @@ requeue_actions() {
     if [ "$rejects" -lt 2 ]; then
       echo "#$n rejected $rejects time(s): send back to $b as attempt $((rejects + 1)). Run exactly: gh issue edit $n --remove-label agent:lead --add-label agent:$b   (keep the status label as it is)"
     else
-      echo "#$n rejected $rejects times: do NOT send it back. Escalate: gh issue edit $n --remove-label agent:lead --add-label agent:architect --add-label status:blocked  and explain both rejections in one paragraph"
+      echo "#$n rejected $rejects times: do NOT send it back. Escalate: gh issue edit $n --remove-label agent:lead --remove-label status:changes-requested --remove-label status:test-failed --add-label agent:architect --add-label status:blocked  and explain both rejections in one paragraph"
     fi
   done
 }
@@ -131,6 +131,8 @@ case "$AGENT" in
     CANDIDATES="$(dispatch_candidates)"
     REQUEUE="$(requeue_actions)"
     PENDING+=$'\n\n'"REWORK ACTIONS (computed by code; do these first, exactly as written):"$'\n'"${REQUEUE:-none}"
+    PROBLEMS="$(board_problems)"
+    PENDING+=$'\n\n'"BOARD PROBLEMS (computed by code; fix these before anything else, see item 0 of your role):"$'\n'"${PROBLEMS:-none}"
     PENDING+=$'\n\n'"DISPATCH CANDIDATES (computed by code; assign only from this list, at most one per builder):"$'\n'"${CANDIDATES:-none}"
     PHASE="planning"
     ;;
@@ -273,7 +275,7 @@ jq -nc \
 
 # 7. board check (code, not a model): after a planning run, read the board back and flag contradictions,
 #    so a handoff that claims changes which did not happen is caught by the system itself.
-board_check() {
+board_problems() {  # prints one "- #N: ..." line per contradiction between the board and the protocol
   local issues problems runlog
   issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
   problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
@@ -295,7 +297,12 @@ board_check() {
   if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
     problems+=$'\n'"- #$runlog: Run log is not pinned"
   fi
-  problems="$(sed '/^$/d' <<<"$problems")"
+  sed '/^$/d' <<<"$problems"
+}
+board_check() {
+  local problems runlog
+  problems="$(board_problems)"
+  runlog="$(gh issue list --state open --limit 100 --json number,title --jq '[.[] | select(.title == "Run log")][0].number // empty')"
   [ -z "$problems" ] && { log "board-check: clean"; return 0; }
   log "board-check: $(wc -l <<<"$problems") problem(s)"
   local h; h="$(sha256sum <<<"$problems" | cut -c1-16)"

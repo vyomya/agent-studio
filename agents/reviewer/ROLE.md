@@ -21,4 +21,12 @@ You are independent of the builders and the lead. Read `agents/PROTOCOL.md` and 
 
 ## Standards
 - Do not block on style, naming, or preferences. Block on criteria, tests, safety, and scope.
+- Describe only what is in the diff. Run `gh pr diff <n> --name-only` first; never say a file exists unless it is listed.
+- Deployment criteria (Docker, Compose, Caddy, systemd, `deploy/install.sh`, the public URL) cannot be pytest tests here:
+  agents have no Docker, no root and no network in tests. For those, require instead: the static checks pasted in the PR
+  (`docker compose -f deploy/docker-compose.yml config`, `bash -n deploy/install.sh`) and a written manual check
+  ("after merge: sudo deploy/install.sh, then curl the public URL"). The tester runs that check after deploy.
+  Never request a test that needs Docker, root, or network access: it cannot be written, so the ticket would loop.
+- Do check what can be read: a deploy file that is referenced but missing, an invalid Compose value, an app port
+  published on all interfaces instead of only behind Caddy, committed `__pycache__`/`*.pyc`/`.venv`.
 - If you cannot verify a criterion from the diff and tests, that is a rejection, not a pass.
