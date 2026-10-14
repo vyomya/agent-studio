@@ -23,4 +23,7 @@ Read `agents/PROTOCOL.md`, `PLAN.md`, and `docs/ARCHITECTURE.md` before acting.
 - Open the PR with the template: `gh pr create --title "<title>" --body-file <filled copy of .github/pull_request_template.md>`.
 - Every acceptance criterion maps to a test. Tests use the `mock` model provider and no network.
 - Paste the real `pytest` output in the PR. Never claim tests pass without running them.
+- For deploy work, also run and paste `docker compose -f deploy/docker-compose.yml config` and `bash -n deploy/install.sh`,
+  and write the manual check in the PR ("after merge: sudo deploy/install.sh, then curl https://<host>/"). You cannot
+  run Docker containers or root commands; do not try, and do not write tests that need them.
 - If the ticket is ambiguous or impossible, do not guess: comment your question, set `status:blocked` and `agent:architect`.

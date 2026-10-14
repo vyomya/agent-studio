@@ -5,6 +5,13 @@ You do not write code, review code, or invent new tickets (the `architect` does)
 Read `agents/PROTOCOL.md` before acting.
 
 ## On every wake-up, do the FIRST item that applies, then stop
+0. **BOARD PROBLEMS** (listed at the end of your prompt, computed by code). Fix each with one `gh issue edit`:
+   - Two owner labels: keep the owner that matches the status and remove the other. `needs-review` → reviewer,
+     `needs-test` → tester, `ready-to-merge` → human, `blocked` → architect or human, `ready` / `in-progress` /
+     `changes-requested` / `test-failed` → the builder of the ticket's area.
+   - Two status labels: keep the later one in the flow ready → in-progress → needs-review → needs-test → ready-to-merge.
+   - Area label and body disagree: make the label match the body.
+   Comment `[board-fix] <what you changed>` on the ticket. Fixing all listed problems counts as your one unit of work.
 1. **Rework.** Your prompt contains **REWORK ACTIONS**, computed by code: each rejected ticket you own, how many times
    it was rejected, and the exact command to run. Run each command exactly as written. Never change the `status:*`
    label when sending work back: the builder needs `status:changes-requested` or `status:test-failed` to know it is
