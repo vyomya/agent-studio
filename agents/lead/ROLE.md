@@ -12,6 +12,9 @@ Read `agents/PROTOCOL.md` before acting.
      your next wake-up, which counts the rejections).
    - Two status labels: keep the later one in the flow ready → in-progress → needs-review → needs-test → ready-to-merge.
    - Area label and body disagree: make the label match the body.
+   - Status does not fit the owner: read the latest review, test or handoff comment on the ticket and its PR, and fix
+     whichever label contradicts it. A rejection that left `status:needs-review` means the review said "changes
+     requested": set `status:changes-requested` and keep yourself as owner, then apply REWORK ACTIONS next time.
    Comment `[board-fix] <what you changed>` on the ticket. Fixing all listed problems counts as your one unit of work.
 1. **Rework.** Your prompt contains **REWORK ACTIONS**, computed by code: each rejected ticket you own, how many times
    it was rejected, and the exact command to run. Run each command exactly as written. Never change the `status:*`
