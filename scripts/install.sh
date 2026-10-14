@@ -16,7 +16,7 @@ ROOT=/srv/agent-studio
 # shellcheck source=/dev/null
 source "$REPO_DIR/agents/agents.conf"
 step() { printf '\n==> %s\n' "$*"; }
-as_agents() { sudo -iu agents bash -lc "$*"; }
+as_agents() { sudo -u agents -H bash -lc "$*"; }
 cfg() { local v="AGENT_${1//-/_}_$2"; printf '%s' "${!v:-}"; }
 
 refresh_agents() {
