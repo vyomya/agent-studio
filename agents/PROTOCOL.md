@@ -39,8 +39,11 @@ Sign the first line of every comment, PR body, and review you write:
 A PR cannot merge without `review:approved` and `test:passed`. New commits remove both automatically.
 
 ## Claiming
-Only pick up work labeled with **your** `agent:` label. To claim, set `status:in-progress` and comment
-`[claim] <agent-name> picked up #<n>`. Never touch a ticket another agent has claimed.
+Only pick up work labeled with **your** `agent:` label. To claim, swap the status (a ticket has exactly one
+`status:*` label at a time) and comment:
+`gh issue edit <n> --remove-label status:ready --add-label status:in-progress` then `[claim] <agent-name> picked up #<n>`.
+When you change a status, always remove the old `status:*` label in the same command.
+Never touch a ticket another agent has claimed.
 
 ## Handoffs
 Every time work changes hands, comment in this exact format:
