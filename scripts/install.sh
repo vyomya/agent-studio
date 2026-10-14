@@ -62,7 +62,10 @@ step "Cloning one workspace per agent, each with its own git identity"
 for a in $AGENTS; do
   rt="$(cfg "$a" RUNTIME)"
   as_agents "set -a; . $ROOT/.env; set +a
-    [ -d $ROOT/work/$a/.git ] || gh repo clone $REPO $ROOT/work/$a -- --quiet
+    if ! git -C $ROOT/work/$a remote get-url origin >/dev/null 2>&1; then
+      [ -e $ROOT/work/$a ] && mv $ROOT/work/$a $ROOT/work/$a.pre-clone-\$(date +%s)
+      gh repo clone $REPO $ROOT/work/$a -- --quiet
+    fi
     git -C $ROOT/work/$a config user.name  '$a ($rt)'
     git -C $ROOT/work/$a config user.email '$a@agents.agent-studio.local'"
 done
@@ -82,7 +85,17 @@ for a in $AGENTS; do
       ;;
   esac
 done
-
+step "Trimming OpenClaw's default workspace files (fewer prompt tokens, nothing personal, never committed)"
+for a in $AGENTS; do
+  [ "$(cfg "$a" RUNTIME)" = openclaw ] || continue
+  as_agents "W=$ROOT/work/$a
+    rm -f \$W/BOOTSTRAP.md
+    printf '# %s\\nHeadless Agent Studio agent. Your full instructions arrive in each message; follow them only.\\n' $a > \$W/AGENTS.md
+    printf 'Concise, careful software engineer.\\n' > \$W/SOUL.md
+    printf 'Name: %s\\n' $a > \$W/IDENTITY.md
+    printf 'No human is chatting. Report through GitHub comments as the protocol says.\\n' > \$W/USER.md
+    grep -qx AGENTS.md \$W/.git/info/exclude 2>/dev/null || printf 'AGENTS.md\\nSOUL.md\\nIDENTITY.md\\nUSER.md\\nBOOTSTRAP.md\\nMEMORY.md\\nmemory/\\n.openclaw/\\n' >> \$W/.git/info/exclude"
+done
 step "Shared test database for agents' tests (127.0.0.1:5433)"
 docker ps -a --format '{{.Names}}' | grep -qx studio-testdb || \
   docker run -d --name studio-testdb --restart unless-stopped \
