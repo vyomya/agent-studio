@@ -38,13 +38,18 @@ jobs:
               ...context.repo, pull_number: context.payload.pull_request.number,
             });
             const labels = pr.labels.map(l => l.name);
-            const missing = ['review:approved', 'test:passed'].filter(l => !labels.includes(l));
-            const blocking = ['review:changes-requested', 'test:failed'].filter(l => labels.includes(l));
+            // A PR that only changes docs/ has nothing to test: it needs the review gate only.
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo, pull_number: pr.number, per_page: 100,
+            });
+            const docsOnly = files.length > 0 && files.every(f => f.filename.startsWith('docs/'));
+            const required = docsOnly ? ['review:approved'] : ['review:approved', 'test:passed'];
+            const missing = required.filter(l => !labels.includes(l));const blocking = ['review:changes-requested', 'test:failed'].filter(l => labels.includes(l));
             if (missing.length || blocking.length) {
               core.setFailed(
                 `Merge blocked. Missing: ${missing.join(', ') || 'none'}. ` +
                 `Blocking: ${blocking.join(', ') || 'none'}.`
               );
             } else {
-              core.info('Review and test gates passed.');
+              core.info(docsOnly ? 'Docs-only PR: review gate passed.' : 'Review and test gates passed.');
             }
