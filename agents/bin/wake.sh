@@ -99,7 +99,7 @@ case "$AGENT" in
     ;;
   builder-*)
     PENDING="$(gh issue list --state open --label "agent:$AGENT" --limit 20 --json number,title,labels \
-      --jq '.[] | select(any(.labels[].name; . == "status:ready" or . == "status:changes-requested" or . == "status:test-failed"))
+      --jq '.[] | select(any(.labels[].name; . == "status:ready" or . == "status:in-progress" or . == "status:changes-requested" or . == "status:test-failed"))
                 | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
     if grep -qE 'status:(changes-requested|test-failed)' <<<"$PENDING"; then PHASE="retry"; else PHASE="coding"; fi
     ;;
@@ -213,6 +213,9 @@ board_check() {
     ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
     (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
     (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
+      ([.labels[].name | select(startswith("status:"))]) as $st |
+    (if ($st | length) > 1 then "- #\(.number): several status labels \
+    ($st) (must be at most one)" else empty end),
     (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
        then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
     (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
