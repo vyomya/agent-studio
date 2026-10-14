@@ -90,6 +90,46 @@ for i in {1..30}; do
 done
 
 ########################
+# 4. Verify application reachable
+HOST="${DEPLOY_HOST:-localhost}"
+URL="https://$HOST"
+log "Checking application health at $URL"
+# Wait up to 30 seconds for the service to become healthy
+for i in {1..30}; do
+  if curl -k -s -o /dev/null -w "%{http_code}" "$URL" | grep -q '^2'; then
+    log "Application responded with HTTP 200"
+    break
+  fi
+  sleep 1
+done
+
+# Apply database migrations (placeholder)
+# NOTE: Replace this with the actual migration command for the application.
+log "Applying database migrations (placeholder)"
+# Example: docker compose -f "$COMPOSE_FILE" exec app python manage.py migrate
+
+# Install systemd unit to auto‑start services on reboot
+SYSTEMD_UNIT="/etc/systemd/system/agent-studio.service"
+log "Installing systemd unit $SYSTEMD_UNIT"
+cat <<'EOF' > "$SYSTEMD_UNIT"
+[Unit]
+Description=Agent Studio Web Service
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker compose -f $COMPOSE_FILE up -d
+ExecStop=/usr/bin/docker compose -f $COMPOSE_FILE down
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable agent-studio.service
+
+########################
 # 5. Summary
 ########################
 log "Deploy/install completed successfully"
