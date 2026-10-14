@@ -52,7 +52,9 @@ issues_for() {  # issues currently owned by this agent, one "#N title [labels]" 
 PENDING=""; PHASE=""; TICKET=""
 case "$AGENT" in
   architect)
-    PENDING="$(issues_for)"
+    PENDING="$(gh issue list --state open --label agent:architect --limit 50 --json number,title,labels \
+      --jq '.[] | select(any(.labels[].name; . == "status:blocked" or . == "type:bug") or (.title | startswith("[human]")))
+                | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
     n_tickets="$(gh issue list --state all --label type:feature --limit 1 --json number --jq 'length')"
     if [ "$n_tickets" = "0" ]; then
       PENDING="KICKOFF: no tickets exist yet. Follow item 1 of your role."$'\n'"$PENDING"

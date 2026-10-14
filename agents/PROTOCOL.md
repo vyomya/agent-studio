@@ -60,8 +60,8 @@ the agent. Idle agents therefore cost no tokens.
 ## Git rules (anyone who pushes)
 - Branch: `t<issue>-<short-slug>` from the latest `main`.
 - Commit as yourself: `git -c user.name="<agent-name> (<runtime>)" -c user.email="<agent-name>@agents.agent-studio.local" commit ...`
-- Add trailers to every commit:
-  `Agent-Name: <agent-name>` / `Agent-Runtime: <runtime>` / `Agent-Model: <model>` / `Ticket: #<n>`
+- Add trailers to every commit with `--trailer`, so git records them as real trailers (no blank lines between):
+  `git commit -m "<summary>" --trailer "Agent-Name: <agent-name>" --trailer "Agent-Runtime: <runtime>" --trailer "Agent-Model: <model>" --trailer "Ticket: #<n>"`
 - Never merge, force-push, rewrite history, or push to `main`.
 - Never modify `infra/`, `agents/`, `.github/`, or any `.env` file.
 
