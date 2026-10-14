@@ -175,7 +175,36 @@ jq -nc \
     prompt_tokens:$prompt_tokens, completion_tokens:$completion_tokens, cache_read_tokens:$cache_read_tokens,total_tokens:$total_tokens,
     status:$status, seconds:$seconds, source:(if $total_tokens == null then "missing" else "runtime" end), log:$log}' \
   >> "$LEDGER"
-
+# 7. board check (code, not a model): after a planning run, read the board back and flag contradictions,
+#    so a handoff that claims changes which did not happen is caught by the system itself.
+board_check() {
+  local issues problems runlog
+  issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
+  problems="$(jq -r '
+    .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
+    ([.labels[].name | select(startswith("agent:"))]) as $owners |
+    ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
+    (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
+    (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
+    (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
+       then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
+    (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
+       then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end)
+  ' <<<"$issues")"
+  runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
+  if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
+    problems+=$'\n'"- #$runlog: Run log is not pinned"
+  fi
+  problems="$(sed '/^$/d' <<<"$problems")"
+  [ -z "$problems" ] && { log "board-check: clean"; return 0; }
+  log "board-check: $(wc -l <<<"$problems") problem(s)"
+  local h; h="$(sha256sum <<<"$problems" | cut -c1-16)"
+  [ "$h" = "$(cat "$STATE/board-check.hash" 2>/dev/null)" ] && return 0   # same findings already posted
+  echo "$h" > "$STATE/board-check.hash"
+  [ -n "$runlog" ] && gh issue comment "$runlog" --body "[board-check | wake.sh | no model] after the $AGENT run ($TS), the board contradicts the protocol:
+$problems" >/dev/null || true
+}
+case "$AGENT" in architect|lead) board_check || log "warn: board-check failed" ;; esac
 [ "$AGENT" = lead ] && [ "$status" = ok ] && echo "$fp" > "$STATE/lead.fp"
 log "end: $status in ${secs}s, tokens=${p_total} (new in=${p_in}, cached in=${p_cache}, out=${p_out})"
 exit 0
