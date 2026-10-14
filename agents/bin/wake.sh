@@ -85,6 +85,23 @@ workspace_state() {  # $1 = issue number
   echo "branch: $br; commits not on main: $ahead; files changed: $files; build artifacts committed: $junk; uncommitted files: $dirty; branch pushed to GitHub: $remote; open PR: ${pr:-none}"
 }
 
+# Rework facts for the lead (pure code): rejected tickets it owns, how many times each was rejected, and the
+# exact command to run. Rejections are counted from the reviewer/tester handoff comments on the ticket.
+requeue_actions() {
+  local n area b rejects
+  for n in $(gh issue list --state open --label agent:lead --limit 50 --json number,labels \
+              --jq '.[] | select(any(.labels[].name; . == "status:changes-requested" or . == "status:test-failed")) | .number'); do
+    area="$(gh issue view "$n" --json labels -q '[.labels[].name | select(startswith("area:")) | sub("area:"; "")][0]')"
+    b="builder-$area"
+    rejects="$(gh issue view "$n" --json comments -q '[.comments[].body | select(test("(^|\\n)\\[handoff\\] (reviewer|tester) -> lead"))] | length')"
+    if [ "$rejects" -lt 2 ]; then
+      echo "#$n rejected $rejects time(s): send back to $b as attempt $((rejects + 1)). Run exactly: gh issue edit $n --remove-label agent:lead --add-label agent:$b   (keep the status label as it is)"
+    else
+      echo "#$n rejected $rejects times: do NOT send it back. Escalate: gh issue edit $n --remove-label agent:lead --add-label agent:architect --add-label status:blocked  and explain both rejections in one paragraph"
+    fi
+  done
+}
+
 PENDING=""; PHASE=""; TICKET=""
 case "$AGENT" in
   architect)
@@ -112,6 +129,8 @@ case "$AGENT" in
     # Dispatch facts are computed by code, not judged by the model: a ticket is a candidate only if the lead
     # owns it, it has no status yet, every "Depends on" issue is closed, and its area's builder holds nothing.
     CANDIDATES="$(dispatch_candidates)"
+    REQUEUE="$(requeue_actions)"
+    PENDING+=$'\n\n'"REWORK ACTIONS (computed by code; do these first, exactly as written):"$'\n'"${REQUEUE:-none}"
     PENDING+=$'\n\n'"DISPATCH CANDIDATES (computed by code; assign only from this list, at most one per builder):"$'\n'"${CANDIDATES:-none}"
     PHASE="planning"
     ;;
@@ -123,8 +142,15 @@ case "$AGENT" in
     if [ -n "${PENDING//[[:space:]]/}" ]; then
       n="$(grep -oE '#[0-9]+' <<<"$PENDING" | head -1 | tr -d '#')"
       git -C "$WS" fetch --quiet origin 2>/dev/null || true
-      PENDING+=$'\n\n'"WORKSPACE STATE for #$n (computed by code, true as of this wake-up):"$'\n'"$(workspace_state "$n")"
-      PENDING+=$'\n'"If commits already exist, do not redo the work: finish it (tests, push, PR, labels, handoff)."
+      WSTATE="$(workspace_state "$n")"
+      PENDING+=$'\n\n'"WORKSPACE STATE for #$n (computed by code, true as of this wake-up):"$'\n'"$WSTATE"
+      if [[ "$WSTATE" =~ open\ PR:\ ([0-9]+) ]]; then
+        PHASE="retry"
+        PENDING+=$'\n'"PR #${BASH_REMATCH[1]} already exists: this is REWORK on the same branch, not new work. Read every review and"
+        PENDING+=$'\n'"bug comment on PR #${BASH_REMATCH[1]} and #$n (gh pr view ${BASH_REMATCH[1]} --comments), fix each point, push, reply to each point."
+      else
+        PENDING+=$'\n'"If commits already exist, do not redo the work: finish it (tests, push, PR, labels, handoff)."
+      fi
     fi
     ;;
   reviewer) PENDING="$(issues_for)"; PHASE="review" ;;
@@ -278,7 +304,7 @@ board_check() {
   [ -n "$runlog" ] && gh issue comment "$runlog" --body "[board-check | wake.sh | no model] after the $AGENT run ($TS), the board contradicts the protocol:
 $problems" >/dev/null || true
 }
-board_check || log "warn: board-check failed" 
+board_check || log "warn: board-check failed"   # after every run: any agent can leave the board inconsistent
 
 # 8. delivery check (code, not a model): after a builder run, compare what the builder said with the workspace.
 #    Commits that never reached a PR are reported on the ticket; the next wake-up resumes from WORKSPACE STATE.
