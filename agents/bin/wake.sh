@@ -113,6 +113,14 @@ board_problems() {  # prints one "- #N: ..." line per contradiction between the 
     (if ($owners | length) != 1 then "- #\(.number): owner labels \($owners) (must be exactly one agent:*)" else empty end),
     ([.labels[].name | select(startswith("status:"))]) as $st |
     (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
+    ({"status:ready":["agent:builder-core","agent:builder-web"], "status:in-progress":["agent:builder-core","agent:builder-web"],
+      "status:needs-review":["agent:reviewer"], "status:needs-test":["agent:tester"],
+      "status:changes-requested":["agent:lead","agent:builder-core","agent:builder-web"],
+      "status:test-failed":["agent:lead","agent:builder-core","agent:builder-web"],
+      "status:ready-to-merge":["agent:human"], "status:blocked":["agent:architect","agent:human"]}) as $allowed |
+    (if ($st | length) == 1 and ($owners | length) == 1 and ($allowed[$st[0]] // null) != null
+          and (($allowed[$st[0]] | index($owners[0])) == null)
+       then "- #\(.number): \($st[0]) does not fit owner \($owners[0]) (expected \($allowed[$st[0]] | join(" or ")))" else empty end),
     (if $owners == ["agent:architect"] and (any(.labels[].name; . == "status:blocked") | not) and (.title | startswith("[human]") | not)
        then "- #\(.number): still agent:architect but not blocked (should be handed to lead)" else empty end),
     (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
