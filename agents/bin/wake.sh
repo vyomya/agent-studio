@@ -123,9 +123,9 @@ start="$(date +%s)"
 set +e
 case "$RUNTIME" in
   openclaw)
-    ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" openclaw agent exec \
-        --message-file "$PROMPT" --cwd "$WS" --model "$MODEL" \
-        ${FALLBACK:+--fallback "$FALLBACK"} --json ) >"$OUT" 2>"$ERR"
+    ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" openclaw agent --local --agent "$AGENT" \
+        --session-id "$AGENT-$TS" --message-file "$PROMPT" --model "$MODEL" \
+        --timeout $(( RUN_TIMEOUT_MIN * 60 )) --json ) >"$OUT" 2>"$ERR"
     ;;
   hermes)
     ( cd "$WS" && timeout "${RUN_TIMEOUT_MIN}m" hermes -p "$AGENT" -z "$(cat "$PROMPT")" \
@@ -142,15 +142,19 @@ case $rc in 0) status=ok ;; 124) status=timeout ;; *) status=error ;; esac
 num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && printf '%s' "$1" || printf 'null'; }
 p_in=""; p_out=""; p_total=""; r_model="$MODEL"; r_provider="$PROVIDER"
 if [ "$RUNTIME" = openclaw ] && [ -s "$OUT" ]; then
-  p_in="$(jq -r '.usage.input // empty' "$OUT" 2>/dev/null || true)"
-  p_out="$(jq -r '.usage.output // empty' "$OUT" 2>/dev/null || true)"
-  p_total="$(jq -r '.usage.total // empty' "$OUT" 2>/dev/null || true)"
-  r_model="$(jq -r '.model // empty' "$OUT" 2>/dev/null || true)"; r_model="${r_model:-$MODEL}"
-  r_provider="$(jq -r '.provider // empty' "$OUT" 2>/dev/null || true)"; r_provider="${r_provider:-$PROVIDER}"
+  # OpenClaw may print log lines around its JSON; keep only the JSON object (first "{" line to first "}" line).
+  awk '/^\{/{f=1} f{print} f&&/^\}/{exit}' "$OUT" > "$OUT.json"
+  p_in="$(jq -r '.meta.agentMeta.usage.input // empty' "$OUT.json" 2>/dev/null || true)"
+  p_out="$(jq -r '.meta.agentMeta.usage.output // empty' "$OUT.json" 2>/dev/null || true)"
+  p_total="$(jq -r '.meta.agentMeta.usage.total // empty' "$OUT.json" 2>/dev/null || true)"
+  r_model="$(jq -r '.meta.agentMeta.model // empty' "$OUT.json" 2>/dev/null || true)"; r_model="${r_model:-$MODEL}"
+  r_provider="$(jq -r '.meta.agentMeta.provider // empty' "$OUT.json" 2>/dev/null || true)"; r_provider="${r_provider:-$PROVIDER}"
 elif [ "$RUNTIME" = hermes ] && [ -s "$USAGE" ]; then
-  p_in="$(jq -r '[.. | objects | (.input_tokens? // .prompt_tokens? // empty)] | add // empty' "$USAGE" 2>/dev/null || true)"
-  p_out="$(jq -r '[.. | objects | (.output_tokens? // .completion_tokens? // empty)] | add // empty' "$USAGE" 2>/dev/null || true)"
-  p_total="$(jq -r '.total_including_auxiliary // empty' "$USAGE" 2>/dev/null || true)"
+  p_in="$(jq -r '.input_tokens // empty' "$USAGE" 2>/dev/null || true)"
+  p_out="$(jq -r '.output_tokens // empty' "$USAGE" 2>/dev/null || true)"
+  # includes Hermes' own side calls (title generation), so the ledger shows the real spend
+  p_total="$(jq -r '.total_including_auxiliary.total_tokens // .total_tokens // empty' "$USAGE" 2>/dev/null || true)"
+  r_model="$(jq -r '.model // empty' "$USAGE" 2>/dev/null || true)"; r_model="${r_model:-$MODEL}"
 fi
 p_in="$(num "$p_in")"; p_out="$(num "$p_out")"; p_total="$(num "$p_total")"
 if [ "$p_total" = null ] && [ "$p_in" != null ] && [ "$p_out" != null ]; then p_total=$(( p_in + p_out )); fi
