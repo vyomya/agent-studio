@@ -16,6 +16,7 @@ ROOT=/srv/agent-studio
 # shellcheck source=/dev/null
 source "$REPO_DIR/agents/agents.conf"
 step() { printf '\n==> %s\n' "$*"; }
+# Not "sudo -i": with -i, sudo joins a multi-line command into one line, so "set +a" swallowed the rest as arguments.
 as_agents() { sudo -u agents -H bash -lc "cd ~ && $*"; }
 cfg() { local v="AGENT_${1//-/_}_$2"; printf '%s' "${!v:-}"; }
 
@@ -62,6 +63,7 @@ step "Cloning one workspace per agent, each with its own git identity"
 for a in $AGENTS; do
   rt="$(cfg "$a" RUNTIME)"
   as_agents "set -a; . $ROOT/.env; set +a
+    # a folder made by 'openclaw agents add' is a bare git init with no origin; move it aside and clone for real
     if ! git -C $ROOT/work/$a remote get-url origin >/dev/null 2>&1; then
       [ -e $ROOT/work/$a ] && mv $ROOT/work/$a $ROOT/work/$a.pre-clone-\$(date +%s)
       gh repo clone $REPO $ROOT/work/$a -- --quiet
@@ -69,6 +71,8 @@ for a in $AGENTS; do
     git -C $ROOT/work/$a config user.name  '$a ($rt)'
     git -C $ROOT/work/$a config user.email '$a@agents.agent-studio.local'"
 done
+# Store the token in the agents user's gh config. Inside Hermes, gh had no auth even though wake.sh exports GH_TOKEN
+# (Hermes does not pass it to the commands its agents run), so gh and git push must not rely on the variable alone.
 as_agents "set -a; . $ROOT/.env; set +a
   printf '%s' \"\$GH_TOKEN\" | env -u GH_TOKEN gh auth login --hostname github.com --with-token
   env -u GH_TOKEN gh auth setup-git"
@@ -87,6 +91,20 @@ for a in $AGENTS; do
       ;;
   esac
 done
+
+step "OpenClaw: Ollama Cloud as an OpenAI-compatible provider (fallback for Gemini)"
+# The key is copied from .env into the agents user's own config file (mode 600), never into git.
+as_agents "set -a; . $ROOT/.env; set +a
+  C=\$HOME/.openclaw/openclaw.json; cp \$C \$C.bak-ollama
+  jq --arg key \"\$OLLAMA_API_KEY\" '
+    .models.mode = (.models.mode // \"merge\")
+    | .models.providers[\"ollama-cloud\"] = {
+        baseUrl: \"https://ollama.com/v1\", apiKey: \$key, api: \"openai-completions\",
+        models: [{ id: \"gpt-oss:120b\", name: \"gpt-oss 120b (Ollama Cloud)\", reasoning: false, input: [\"text\"],
+                   cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 16000 }] }
+    | .agents.defaults.models[\"ollama-cloud/gpt-oss:120b\"] = {alias: \"gpt-oss-120b\"}
+  ' \$C.bak-ollama > \$C && chmod 600 \$C"
+
 step "Trimming OpenClaw's default workspace files (fewer prompt tokens, nothing personal, never committed)"
 for a in $AGENTS; do
   [ "$(cfg "$a" RUNTIME)" = openclaw ] || continue
@@ -98,6 +116,7 @@ for a in $AGENTS; do
     printf 'No human is chatting. Report through GitHub comments as the protocol says.\\n' > \$W/USER.md
     grep -qx AGENTS.md \$W/.git/info/exclude 2>/dev/null || printf 'AGENTS.md\\nSOUL.md\\nIDENTITY.md\\nUSER.md\\nBOOTSTRAP.md\\nMEMORY.md\\nmemory/\\n.openclaw/\\n' >> \$W/.git/info/exclude"
 done
+
 step "Shared test database for agents' tests (127.0.0.1:5433)"
 docker ps -a --format '{{.Names}}' | grep -qx studio-testdb || \
   docker run -d --name studio-testdb --restart unless-stopped \
