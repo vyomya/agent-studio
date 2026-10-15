@@ -155,3 +155,16 @@ def test_openai_provider_requires_primary_and_fallback_configuration(monkeypatch
     monkeypatch.setenv("GENERATOR_PROVIDER", "openai")
     with pytest.raises(GeneratorConfigError):
         Generator()
+
+
+def test_retry_prompt_includes_previous_html_and_validation_errors():
+    messages = Generator._messages(
+        "a page",
+        None,
+        previous_attempt="<html>broken</html>",
+        validation_errors=["Missing or empty <title> element."],
+    )
+
+    prompt = messages[1]["content"]
+    assert "<html>broken</html>" in prompt
+    assert "Missing or empty <title> element." in prompt
