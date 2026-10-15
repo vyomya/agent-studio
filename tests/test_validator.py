@@ -1,5 +1,6 @@
 import textwrap
 
+import app.validator as validator
 from app.validator import validate_html
 
 
@@ -232,3 +233,15 @@ def test_validation_preserves_original_html():
     original = html[:]
     validate_html(html)
     assert html == original
+
+
+def test_parser_exception_returns_human_readable_error(monkeypatch):
+    def fail_to_parse(self, data):
+        raise ValueError("synthetic parser failure")
+
+    monkeypatch.setattr(validator._TagCollector, "feed", fail_to_parse)
+
+    errors = validate_html(_make_html())
+
+    assert any("failed to parse html" in error.lower() for error in errors)
+    assert any("synthetic parser failure" in error for error in errors)
