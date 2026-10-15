@@ -70,7 +70,8 @@ fi
 SYSTEMD_UNIT=/etc/systemd/system/agent-studio.service
 DOCKER_BIN="$(command -v docker)"
 UNIT_TMP="$(mktemp)"
-trap 'rm -f "$UNIT_TMP"' EXIT
+ENV_TMP=''
+trap 'rm -f "$UNIT_TMP" "$ENV_TMP"' EXIT
 cat > "$UNIT_TMP" <<EOF
 [Unit]
 Description=Agent Studio
@@ -88,11 +89,33 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
+SYSTEMD_CHANGED=0
 if ! cmp -s "$UNIT_TMP" "$SYSTEMD_UNIT"; then
   install -m 0644 "$UNIT_TMP" "$SYSTEMD_UNIT"
+  SYSTEMD_CHANGED=1
+fi
+
+AUTO_DEPLOY_ENV=/etc/default/agent-studio-auto-deploy
+ENV_TMP="$(mktemp)"
+printf 'AGENT_STUDIO_REPO="%s"\n' "$REPO_ROOT" > "$ENV_TMP"
+if ! cmp -s "$ENV_TMP" "$AUTO_DEPLOY_ENV"; then
+  install -m 0644 "$ENV_TMP" "$AUTO_DEPLOY_ENV"
+  SYSTEMD_CHANGED=1
+fi
+for unit in agent-studio-auto-deploy.service agent-studio-auto-deploy.timer; do
+  source="$REPO_ROOT/deploy/$unit"
+  target="/etc/systemd/system/$unit"
+  [[ -r "$source" ]] || fail "Auto-deploy unit not found: $source"
+  if ! cmp -s "$source" "$target"; then
+    install -m 0644 "$source" "$target"
+    SYSTEMD_CHANGED=1
+  fi
+done
+if [[ "$SYSTEMD_CHANGED" -eq 1 ]]; then
   systemctl daemon-reload
 fi
 systemctl enable agent-studio.service
+systemctl enable --now agent-studio-auto-deploy.timer
 
 log 'Compose configuration to be deployed:'
 cat "$COMPOSE_FILE"
