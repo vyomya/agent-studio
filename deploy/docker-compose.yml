@@ -7,5 +7,4 @@ services:
     ports:
       # Caddy will proxy to this internal port; expose for local testing
       - "8000:8000"
-    restart: unless-terminated
-
+    restart: unless-stopped
