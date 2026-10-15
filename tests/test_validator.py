@@ -114,6 +114,11 @@ def test_inline_event_handler_duplicate1():
     # Should flag the inline event handler attribute
     assert any("inline event" in e.lower() for e in errors)
 
+
+def test_non_event_data_attributes_are_allowed():
+    html = _make_html(body="<div data-onclick='not-an-event'>safe</div>")
+    assert validate_html(html) == []
+
 def test_javascript_url_duplicate1():
     html = _make_html(body="<a href='javascript:alert(1)'>bad</a>")
     errors = validate_html(html)
@@ -152,6 +157,27 @@ def test_obfuscated_javascript_url_rejected():
 
 def test_safe_relative_url_allowed():
     assert validate_html(_make_html(body="<a href='/about'>About</a>")) == []
+
+
+def test_non_external_css_is_allowed():
+    body = "<style>body { color: navy; }</style><p style='color: navy'>safe</p>"
+    assert validate_html(_make_html(body=body)) == []
+
+
+def test_mismatched_html_tags_are_rejected():
+    html = _make_html(body="<div><span>broken</div></span>")
+    assert any("mismatched" in error.lower() for error in validate_html(html))
+
+
+def test_unclosed_html_elements_are_rejected():
+    html = _make_html(body="<div>not closed")
+    assert any("unclosed" in error.lower() or "mismatched" in error.lower()
+               for error in validate_html(html))
+
+
+def test_valid_void_and_optional_end_tags_parse():
+    body = "<img src='/local.png'><p>first<p>second<ul><li>one<li>two</ul>"
+    assert validate_html(_make_html(body=body)) == []
 
 
 def test_external_resources_in_all_supported_attributes_rejected():

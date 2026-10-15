@@ -28,6 +28,35 @@ from typing import List
 
 __all__ = ["validate_html"]
 
+_VOID_ELEMENTS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+_OPTIONAL_END_TAGS = {
+    "body", "dd", "dt", "head", "html", "li", "optgroup",
+    "option", "p", "rp", "rt", "tbody", "td", "tfoot",
+    "th", "thead", "tr",
+}
+_IMPLIED_CLOSES = {
+    "li": {"li"},
+    "dt": {"dt", "dd"},
+    "dd": {"dt", "dd"},
+    "p": {"address", "article", "aside", "blockquote", "div", "dl",
+           "fieldset", "footer", "form", "h1", "h2", "h3", "h4",
+           "h5", "h6", "header", "hr", "menu", "nav", "ol",
+           "p", "pre", "section", "table", "ul"},
+    "option": {"option"},
+    "optgroup": {"optgroup"},
+    "rt": {"rp", "rt"},
+    "rp": {"rp", "rt"},
+    "td": {"td", "th"},
+    "th": {"td", "th"},
+    "tr": {"tr"},
+    "thead": {"tbody", "tfoot", "thead"},
+    "tbody": {"tbody", "tfoot", "thead"},
+    "tfoot": {"tbody", "tfoot", "thead"},
+}
+
 
 class _TagCollector(HTMLParser):
     """Collect tags and relevant attribute values while parsing HTML.
@@ -59,9 +88,16 @@ class _TagCollector(HTMLParser):
         self.css_issues: List[str] = []  # descriptions of CSS problems
         self.forbidden_tags: List[str] = []  # e.g., object, embed, meta[refresh]
         self._in_style = False
+        self.tag_stack: List[str] = []
+        self.syntax_errors: List[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_low = tag.lower()
+        implied = _IMPLIED_CLOSES.get(tag_low, set())
+        while self.tag_stack and self.tag_stack[-1] in implied:
+            self.tag_stack.pop()
+        if tag_low not in _VOID_ELEMENTS:
+            self.tag_stack.append(tag_low)
         if tag_low == "title":
             self._in_title = True
         elif tag_low == "h1":
@@ -113,10 +149,22 @@ class _TagCollector(HTMLParser):
                     self.css_issues.append(f"style attribute in <{tag_low}> contains disallowed CSS")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "title":
+        tag_low = tag.lower()
+        if tag_low == "title":
             self._in_title = False
-        if tag.lower() == "style":
+        if tag_low == "style":
             self._in_style = False
+        if tag_low not in self.tag_stack:
+            self.syntax_errors.append(f"Unexpected closing tag </{tag_low}>.")
+            return
+        index = len(self.tag_stack) - 1 - self.tag_stack[::-1].index(tag_low)
+        intervening = self.tag_stack[index + 1:]
+        invalid = [name for name in intervening if name not in _OPTIONAL_END_TAGS]
+        if invalid:
+            self.syntax_errors.append(
+                f"Mismatched closing tag </{tag_low}> before </{invalid[-1]}>."
+            )
+        del self.tag_stack[index:]
 
     def handle_data(self, data: str) -> None:
         if self._in_title:
@@ -175,9 +223,15 @@ def validate_html(html: str) -> List[str]:
     parser = _TagCollector()
     try:
         parser.feed(html)
+        parser.close()
     except Exception as exc:  # pragma: no cover – unexpected parser errors.
         errors.append(f"Failed to parse HTML: {exc}")
         return errors
+
+    unclosed = [tag for tag in parser.tag_stack if tag not in _OPTIONAL_END_TAGS]
+    if unclosed:
+        parser.syntax_errors.append("Unclosed HTML elements: " + ", ".join(unclosed) + ".")
+    errors.extend(parser.syntax_errors)
 
     # 2. Title check.
     title_text = "".join(parser.titles).strip()
