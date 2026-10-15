@@ -1,0 +1,11 @@
+# Caddy configuration for the thin skeleton.
+# Serves the FastAPI app on the public sslip.io domain.
+
+{$DOMAIN} {
+    reverse_proxy web:8000
+    encode gzip
+    log {
+        output stdout
+    }
+}
+

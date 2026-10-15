@@ -1,7 +1,10 @@
 version: "3.8"
 
 services:
-  placeholder:
-    image: alpine:latest
-    command: ["sh", "-c", "echo Placeholder service running; sleep infinity"]
+  web:
+    build: ../app
+    container_name: agent-studio-web
+    ports:
+      # Caddy will proxy to this internal port; expose for local testing
+      - "8000:8000"
     restart: unless-stopped
