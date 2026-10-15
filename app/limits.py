@@ -101,7 +101,7 @@ def check_model_limits(visitor_id: str) -> None:
 
     per_hour = _positive_limit("MODEL_LIMIT_PER_HOUR", 5)
     per_day = _positive_limit("MODEL_LIMIT_PER_DAY", 20)
-    global_per_day = _positive_limit("GLOBAL_MODEL_DAILY_LIMIT", 1000)
+    global_per_day = _positive_limit("GLOBAL_MODEL_DAILY_LIMIT", 40)
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL must be configured to enforce model limits")
@@ -116,6 +116,12 @@ def check_model_limits(visitor_id: str) -> None:
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(_CREATE_TABLE)
+            # Hourly rows are also used to aggregate a visitor's daily total.
+            # Serialize each visitor/day before reading or changing those rows.
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s), %s)",
+                (visitor_id, day.toordinal()),
+            )
             cursor.execute(
                 """
                 INSERT INTO model_limits
@@ -143,6 +149,15 @@ def check_model_limits(visitor_id: str) -> None:
                 """,
                 (visitor_id, hour_window, day),
             )
-            hour_count, day_count = cursor.fetchone()
+            hour_count, _ = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(day_count), 0)
+                FROM model_limits
+                WHERE visitor_ip = %s AND day_date = %s
+                """,
+                (visitor_id, day),
+            )
+            day_count = cursor.fetchone()[0]
             if hour_count > per_hour or day_count > per_day:
                 raise LimitExceeded()

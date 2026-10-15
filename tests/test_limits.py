@@ -1,5 +1,8 @@
 """Tests for the PostgreSQL-backed model allowance guard."""
 
+import os
+from datetime import datetime, time, timedelta, timezone
+from uuid import uuid4
 from unittest.mock import Mock
 
 import pytest
@@ -57,7 +60,7 @@ def install_fake_database(monkeypatch, returned_rows):
 
 
 def test_check_model_limits_uses_configured_windows_and_allows_request(monkeypatch):
-    connect, _, cursor = install_fake_database(monkeypatch, [(1,), (1, 1)])
+    connect, _, cursor = install_fake_database(monkeypatch, [(1,), (1, 1), (1,)])
     monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "3")
     monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "9")
     monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "30")
@@ -65,12 +68,15 @@ def test_check_model_limits_uses_configured_windows_and_allows_request(monkeypat
     assert limits.check_model_limits("192.0.2.5") is None
 
     connect.assert_called_once_with("postgresql://test/db")
-    assert len(cursor.statements) == 3
+    assert len(cursor.statements) == 5
     assert "CREATE TABLE IF NOT EXISTS model_limits" in cursor.statements[0][0]
-    assert cursor.statements[1][1][0] == ""
-    assert cursor.statements[2][1][0] == "192.0.2.5"
-    assert cursor.statements[1][1][1].hour == 0
-    assert cursor.statements[2][1][1].minute == 0
+    assert "pg_advisory_xact_lock" in cursor.statements[1][0]
+    assert cursor.statements[2][1][0] == ""
+    assert cursor.statements[3][1][0] == "192.0.2.5"
+    assert cursor.statements[2][1][1].hour == 0
+    assert cursor.statements[3][1][1].minute == 0
+    assert "SUM(day_count)" in cursor.statements[4][0]
+    assert cursor.statements[4][1][0] == "192.0.2.5"
 
 
 @pytest.mark.parametrize(
@@ -80,7 +86,7 @@ def test_check_model_limits_uses_configured_windows_and_allows_request(monkeypat
 def test_visitor_limit_returns_friendly_429_before_model_call(
     monkeypatch, hour_count, day_count, hour_limit, day_limit
 ):
-    _, connection, _ = install_fake_database(monkeypatch, [(1,), (hour_count, day_count)])
+    _, connection, _ = install_fake_database(monkeypatch, [(1,), (hour_count, day_count), (day_count,)])
     monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", hour_limit)
     monkeypatch.setenv("MODEL_LIMIT_PER_DAY", day_limit)
     model_call = Mock()
@@ -104,13 +110,15 @@ def test_global_limit_returns_429_without_updating_visitor_or_calling_model(monk
         limits.check_model_limits("192.0.2.9")
         model_call()
 
-    assert len(cursor.statements) == 2  # DDL and global counter only; no visitor upsert.
+    assert len(cursor.statements) == 3  # DDL, visitor lock, global counter; no visitor upsert.
     assert connection.exit_exception is not None
     model_call.assert_not_called()
 
 
 def test_generation_and_refinement_share_the_same_guard(monkeypatch):
-    _, _, cursor = install_fake_database(monkeypatch, [(1,), (1, 1), (2,), (2, 2)])
+    _, _, cursor = install_fake_database(
+        monkeypatch, [(1,), (1, 1), (1,), (2,), (2, 2), (2,)]
+    )
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
 
     # Both request types use the exact same guard and visitor key.
@@ -118,7 +126,91 @@ def test_generation_and_refinement_share_the_same_guard(monkeypatch):
         limits.check_model_limits("198.51.100.4")
 
     visitor_params = [params for _, params in cursor.statements if params and params[0] == "198.51.100.4"]
-    assert len(visitor_params) == 2
+    assert len(visitor_params) == 6
+
+
+def test_global_daily_default_matches_model_allowance(monkeypatch):
+    monkeypatch.delenv("GLOBAL_MODEL_DAILY_LIMIT", raising=False)
+
+    assert limits._positive_limit("GLOBAL_MODEL_DAILY_LIMIT", 40) == 40
+
+
+def test_real_database_daily_limit_spans_six_hour_windows(monkeypatch):
+    database_url = os.getenv("DATABASE_URL_TEST")
+    if not database_url:
+        pytest.skip("DATABASE_URL_TEST is not configured")
+
+    visitor_id = f"daily-limit-integration-{uuid4()}"
+    start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    day = start.date()
+    global_day_window = datetime.combine(day, time.min)
+
+    # Keep this integration test isolated from other test-database activity.
+    with limits.psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(limits._CREATE_TABLE)
+            cursor.execute(
+                """
+                SELECT global_day_count FROM model_limits
+                WHERE visitor_ip = %s AND hour_window = %s AND day_date = %s
+                """,
+                ("", global_day_window, day),
+            )
+            previous_global = cursor.fetchone()
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "5")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "10000")
+    accepted = rejected = 0
+    try:
+        for hour_offset in range(6):
+            fixed_now = start + timedelta(hours=hour_offset)
+
+            class FixedDateTime:
+                @staticmethod
+                def now(tz=None):
+                    return fixed_now
+
+                combine = staticmethod(datetime.combine)
+
+            monkeypatch.setattr(limits, "datetime", FixedDateTime)
+            for _ in range(5):
+                if accepted < 20:
+                    limits.check_model_limits(visitor_id)
+                    accepted += 1
+                else:
+                    with pytest.raises(limits.LimitExceeded) as caught:
+                        limits.check_model_limits(visitor_id)
+                    assert caught.value.status_code == 429
+                    assert caught.value.detail == (
+                        "Model allowance limit exceeded. Please try again later."
+                    )
+                    rejected += 1
+
+        assert accepted == 20
+        assert rejected == 10
+    finally:
+        # Remove test visitor rows and restore the pre-existing global counter.
+        with limits.psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM model_limits WHERE visitor_ip = %s AND day_date = %s",
+                    (visitor_id, day),
+                )
+                if previous_global is None:
+                    cursor.execute(
+                        "DELETE FROM model_limits WHERE visitor_ip = %s AND hour_window = %s AND day_date = %s",
+                        ("", global_day_window, day),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE model_limits SET global_day_count = %s
+                        WHERE visitor_ip = %s AND hour_window = %s AND day_date = %s
+                        """,
+                        (previous_global[0], "", global_day_window, day),
+                    )
 
 
 def test_invalid_visitor_id_is_rejected_before_database_or_model(monkeypatch):
