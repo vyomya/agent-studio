@@ -125,10 +125,23 @@ class Generator:
         self.fallback = Provider(fallback_url, fallback_key, fallback_model, "fallback")
 
     @staticmethod
-    def _messages(spec: str, style_example: str | None) -> list[dict[str, str]]:
+    def _messages(
+        spec: str,
+        style_example: str | None,
+        previous_attempt: str | None = None,
+        validation_errors: list[str] | None = None,
+    ) -> list[dict[str, str]]:
         user_content = "Create one self-contained HTML page for this specification: " + spec
         if style_example:
             user_content += " Style example: " + style_example
+        if previous_attempt is not None:
+            user_content += (
+                "\n\nYour previous HTML attempt failed validation. Return a corrected, complete "
+                "self-contained HTML document.\nValidation errors:\n- "
+                + "\n- ".join(validation_errors or [])
+                + "\nPrevious HTML attempt:\n"
+                + previous_attempt
+            )
         return [
             {"role": "system", "content": "Return a complete, self-contained HTML document with inline CSS. Return HTML only."},
             {"role": "user", "content": user_content},
@@ -137,8 +150,15 @@ class Generator:
     def _attempt(self, provider: Provider, messages: list[dict[str, str]]) -> ProviderResponse:
         return provider.call(messages)
 
-    def generate(self, spec: str, style_example: str | None = None) -> str:
-        messages = self._messages(spec, style_example)
+    def generate(
+        self,
+        spec: str,
+        style_example: str | None = None,
+        *,
+        previous_attempt: str | None = None,
+        validation_errors: list[str] | None = None,
+    ) -> str:
+        messages = self._messages(spec, style_example, previous_attempt, validation_errors)
         primary = self._attempt(self.primary, messages)
         if primary.status_code == 200 and not primary.error:
             return primary.content
