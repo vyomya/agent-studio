@@ -9,7 +9,7 @@ Agent Studio is a web service that converts a short textual specification into a
 4. **Persistence & Gallery** – Valid pages are stored in PostgreSQL (spec, HTML, attempt count, timestamps, version chain). The gallery lists pages newest‑first, rendering each inside an `iframe sandbox srcdoc="…"` with the most restrictive sandbox flags. A *Refine* workflow creates a new version while keeping prior versions immutable.
 
 ### Supporting Services
-- **Caddy** terminates HTTPS on `<ip‑with‑dashes>.sslip.io` and proxies to the FastAPI app.
+- **Caddy** terminates HTTPS on `<ip‑with‑dashes>.sslip.io` and proxies to the FastAPI app. The app, PostgreSQL 16, and Caddy services, configuration mounts, ports, and persistent volumes are defined in [`deploy/docker-compose.yml`](../deploy/docker-compose.yml).
 - **PostgreSQL** runs via Docker Compose; schema includes a `pages` table with columns for `id`, `spec`, `html`, `attempts`, `created_at`, `parent_id`, `version`.
 - **Rate Limiting** – per‑visitor limits (5/hour, 20/day) and a configurable global daily cap are enforced before any model call.
 - **Deployment** – `deploy/install.sh` installs Docker, starts Compose, applies migrations, and ensures the service restarts on VM reboot. The script is idempotent.

@@ -281,4 +281,3 @@ def validate_html(html: str) -> List[str]:
         errors.append(f"Forbidden tag '<{tag}>' is not allowed.")
 
     return errors
-

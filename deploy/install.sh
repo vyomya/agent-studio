@@ -21,6 +21,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/deploy/docker-compose.yml"
 [[ -f "$COMPOSE_FILE" ]] || fail "Compose file not found: $COMPOSE_FILE"
+ENV_FILE="$REPO_ROOT/deploy/.env"
 
 if ! command -v docker >/dev/null 2>&1; then
   log 'Installing Docker Engine and Compose plugin'
@@ -44,6 +45,23 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 docker compose version >/dev/null || fail 'Docker Compose plugin is unavailable.'
 
+# Keep operator-supplied model settings intact; add a public sslip.io domain only
+# when the deployment environment file does not already define one.
+if [[ ! -f "$ENV_FILE" ]] || ! grep -qE '^[[:space:]]*DOMAIN=' "$ENV_FILE"; then
+  PUBLIC_IP="$(curl -4 -fsS --max-time 10 https://api.ipify.org)" \
+    || fail 'Could not determine the VM public IPv4 address for DOMAIN.'
+  if [[ ! "$PUBLIC_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    fail 'Invalid public IPv4 address returned while setting DOMAIN.'
+  fi
+  DOMAIN="${PUBLIC_IP//./-}.sslip.io"
+  if [[ -f "$ENV_FILE" ]]; then
+    printf '\nDOMAIN=%s\n' "$DOMAIN" >> "$ENV_FILE"
+  else
+    (umask 077; printf 'DOMAIN=%s\n' "$DOMAIN" > "$ENV_FILE")
+  fi
+  chmod 0600 "$ENV_FILE"
+fi
+
 systemctl enable docker
 if ! systemctl is-active --quiet docker; then
   systemctl start docker
@@ -63,8 +81,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=$REPO_ROOT
-ExecStart=$DOCKER_BIN compose -f $COMPOSE_FILE up --build -d
-ExecStop=$DOCKER_BIN compose -f $COMPOSE_FILE down
+ExecStart=$DOCKER_BIN compose --env-file $ENV_FILE -f $COMPOSE_FILE up --build -d
+ExecStop=$DOCKER_BIN compose --env-file $ENV_FILE -f $COMPOSE_FILE down
 RemainAfterExit=yes
 
 [Install]
@@ -78,7 +96,7 @@ systemctl enable agent-studio.service
 
 log 'Compose configuration to be deployed:'
 cat "$COMPOSE_FILE"
-docker compose -f "$COMPOSE_FILE" config --quiet
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
 systemctl restart agent-studio.service
 
 HEALTH_URL="${DEPLOY_URL:-https://${DEPLOY_HOST:-localhost}/}"
