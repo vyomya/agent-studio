@@ -1,95 +1,157 @@
-"""Tests for the core generator implementation.
+"""Generator tests use deterministic mock outcomes and a localhost fake API."""
+from __future__ import annotations
 
-The real ``Generator`` class reads configuration from environment variables and
-instantiates provider objects.  For unit tests we provide a small factory that returns a
-custom ``MockProvider`` which reads separate ``MOCK_RESPONSE_<NAME>`` variables for the
-primary and fallback providers.  This allows us to simulate success, specific HTTP error
-codes and timeouts without any network traffic.
-"""
-
-import os
 import json
+import threading
+import time
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import pytest
 
-from app.generator import Generator, GeneratorError, GeneratorConfigError, Provider
+from app.generator import Generator, GeneratorConfigError, GeneratorError, Provider
 
 
-class TestMockProvider(Provider):
-    """Mock provider that picks its response from ``MOCK_RESPONSE_<NAME>`` env vars.
+@contextmanager
+def fake_openai_server(responses):
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers["Content-Length"])
+            payload = json.loads(self.rfile.read(length))
+            self.server.requests_received.append((self.path, payload, self.headers.get("Authorization")))
+            result = self.server.responses[payload["model"]]
+            if result.get("delay"):
+                time.sleep(result["delay"])
+            status = result.get("status", 200)
+            body = result.get("body")
+            if body is None:
+                body = json.dumps({"choices": [{"message": {"content": result.get("content", "<html>ok</html>")}}]})
+            encoded = body.encode()
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+            except BrokenPipeError:
+                pass  # expected when the timeout test's client has already disconnected
 
-    ``name`` is the identifier passed to the factory (e.g., ``"primary"`` or
-    ``"fallback"``).  The environment variable ``MOCK_RESPONSE_<NAME>.upper()`` should contain
-    a JSON string with ``status`` and optional ``content`` fields, or the literal string
-    ``timeout`` to simulate a request timeout.
-    """
+        def log_message(self, format, *args):
+            pass
 
-    def __init__(self, base_url: str, api_key: str, name: str = "primary") -> None:
-        super().__init__(base_url, api_key, name)
-
-    def call(self, payload):  # type: ignore[override]
-        var = f"MOCK_RESPONSE_{self.name.upper()}"
-        raw = os.getenv(var, "")
-        if raw.lower() == "timeout":
-            return type("R", (), {"status_code": 0, "content": "", "error": "mock timeout"})()
-        try:
-            spec = json.loads(raw)
-        except json.JSONDecodeError:
-            return type("R", (), {"status_code": 200, "content": raw, "error": None})()
-        status = int(spec.get("status", 200))
-        content = spec.get("content", "")
-        return type("R", (), {"status_code": status, "content": content, "error": None})()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.responses = responses
+    server.requests_received = []
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1", server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1)
 
 
-def _factory(url, key, name):
-    return TestMockProvider(url, key, name)
+def configure_real_provider(monkeypatch, base_url):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "openai")
+    monkeypatch.setenv("PRIMARY_BASE_URL", base_url)
+    monkeypatch.setenv("PRIMARY_API_KEY", "primary-test-key")
+    monkeypatch.setenv("PRIMARY_MODEL", "primary-model")
+    monkeypatch.setenv("FALLBACK_BASE_URL", base_url)
+    monkeypatch.setenv("FALLBACK_API_KEY", "fallback-test-key")
+    monkeypatch.setenv("FALLBACK_MODEL", "fallback-model")
 
 
 @pytest.fixture(autouse=True)
-def clear_env(monkeypatch):
-    """Clear relevant environment variables before each test."""
-    for var in ["PRIMARY_BASE_URL", "PRIMARY_API_KEY", "FALLBACK_BASE_URL", "FALLBACK_API_KEY"]:
-        monkeypatch.delenv(var, raising=False)
-    for var in list(os.environ):
-        if var.startswith("MOCK_RESPONSE_"):
-            monkeypatch.delenv(var, raising=False)
-    yield
+def clear_generator_environment(monkeypatch):
+    for name in (
+        "GENERATOR_PROVIDER", "PRIMARY_BASE_URL", "PRIMARY_API_KEY", "PRIMARY_MODEL",
+        "FALLBACK_BASE_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL", "MOCK_RESPONSE",
+        "MOCK_RESPONSE_FALLBACK",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
 
-def test_generate_success_primary(monkeypatch):
-    monkeypatch.setenv("PRIMARY_BASE_URL", "https://primary.example")
-    monkeypatch.setenv("PRIMARY_API_KEY", "pk-primary")
-    monkeypatch.setenv("FALLBACK_BASE_URL", "https://fallback.example")
-    monkeypatch.setenv("FALLBACK_API_KEY", "pk-fallback")
-    monkeypatch.setenv("MOCK_RESPONSE_PRIMARY", json.dumps({"status": 200, "content": "<html>OK</html>"}))
-    gen = Generator(provider_factory=_factory)
-    assert gen.generate("spec") == "<html>OK</html>"
+def test_openai_compatible_request_and_response(monkeypatch):
+    with fake_openai_server({"primary-model": {"content": "<html>from primary</html>"}}) as (url, server):
+        configure_real_provider(monkeypatch, url)
+        page = Generator().generate("a dog-walking pricing page", "soft pastel style")
+
+    assert page == "<html>from primary</html>"
+    path, payload, authorization = server.requests_received[0]
+    assert path == "/v1/chat/completions"
+    assert set(payload) == {"model", "messages"}
+    assert payload["model"] == "primary-model"
+    assert [message["role"] for message in payload["messages"]] == ["system", "user"]
+    assert "dog-walking pricing page" in payload["messages"][1]["content"]
+    assert "soft pastel style" in payload["messages"][1]["content"]
+    assert authorization == "Bearer primary-test-key"
 
 
-def test_generate_fallback_on_primary_error(monkeypatch):
-    monkeypatch.setenv("PRIMARY_BASE_URL", "https://primary.example")
-    monkeypatch.setenv("PRIMARY_API_KEY", "pk-primary")
-    monkeypatch.setenv("FALLBACK_BASE_URL", "https://fallback.example")
-    monkeypatch.setenv("FALLBACK_API_KEY", "pk-fallback")
-    monkeypatch.setenv("MOCK_RESPONSE_PRIMARY", json.dumps({"status": 429}))
-    monkeypatch.setenv("MOCK_RESPONSE_FALLBACK", json.dumps({"status": 200, "content": "<html>fallback</html>"}))
-    gen = Generator(provider_factory=_factory)
-    assert gen.generate("spec") == "<html>fallback</html>"
+@pytest.mark.parametrize("status", [402, 429])
+def test_eligible_http_status_uses_fallback_once(monkeypatch, status):
+    with fake_openai_server({
+        "primary-model": {"status": status},
+        "fallback-model": {"content": "<html>fallback</html>"},
+    }) as (url, server):
+        configure_real_provider(monkeypatch, url)
+        assert Generator().generate("spec") == "<html>fallback</html>"
+
+    assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
 
 
-def test_generate_failure_both(monkeypatch):
-    monkeypatch.setenv("PRIMARY_BASE_URL", "https://primary.example")
-    monkeypatch.setenv("PRIMARY_API_KEY", "pk-primary")
-    monkeypatch.setenv("FALLBACK_BASE_URL", "https://fallback.example")
-    monkeypatch.setenv("FALLBACK_API_KEY", "pk-fallback")
-    monkeypatch.setenv("MOCK_RESPONSE_PRIMARY", json.dumps({"status": 429}))
-    monkeypatch.setenv("MOCK_RESPONSE_FALLBACK", json.dumps({"status": 429}))
-    gen = Generator(provider_factory=_factory)
-    with pytest.raises(GeneratorError) as exc:
-        gen.generate("spec")
-    assert "busy" in str(exc.value)
+def test_timeout_uses_fallback_once(monkeypatch):
+    monkeypatch.setattr(Provider, "timeout_seconds", 0.05)
+    with fake_openai_server({
+        "primary-model": {"delay": 0.2},
+        "fallback-model": {"content": "<html>fallback</html>"},
+    }) as (url, server):
+        configure_real_provider(monkeypatch, url)
+        assert Generator().generate("spec") == "<html>fallback</html>"
+
+    assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
 
 
-def test_missing_configuration(monkeypatch):
+def test_http_500_is_an_error_and_does_not_become_a_page(monkeypatch):
+    with fake_openai_server({
+        "primary-model": {"status": 500, "body": "upstream failure"},
+        "fallback-model": {"content": "should not be used"},
+    }) as (url, server):
+        configure_real_provider(monkeypatch, url)
+        with pytest.raises(GeneratorError, match="busy"):
+            Generator().generate("spec")
+
+    assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model"]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_fragment"),
+    [("valid", "<section>"), ("script", "<script>"), ("missing_sections", "<h1>Mock</h1>")],
+)
+def test_environment_selects_mock_provider_outcomes(monkeypatch, outcome, expected_fragment):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_RESPONSE", outcome)
+    page = Generator().generate("spec")
+    assert expected_fragment in page
+
+
+def test_mock_429_retries_with_configured_fallback(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_RESPONSE", "429")
+    monkeypatch.setenv("MOCK_RESPONSE_FALLBACK", "valid")
+    assert "Mock page" in Generator().generate("spec")
+
+
+def test_both_mock_attempts_failing_show_friendly_error(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_RESPONSE", "429")
+    monkeypatch.setenv("MOCK_RESPONSE_FALLBACK", "429")
+    with pytest.raises(GeneratorError, match="busy"):
+        Generator().generate("spec")
+
+
+def test_openai_provider_requires_primary_and_fallback_configuration(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "openai")
     with pytest.raises(GeneratorConfigError):
-        Generator(provider_factory=_factory)
-
+        Generator()
