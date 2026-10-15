@@ -5,6 +5,9 @@ services:
       context: ../app
       dockerfile: Dockerfile
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: 'postgresql://agent_studio:${POSTGRES_PASSWORD:-agent-studio-local}@db:5432/agent_studio'
     volumes:
@@ -38,6 +41,9 @@ services:
   caddy:
     image: caddy:latest
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
       DOMAIN: '${DOMAIN:-localhost}'
     ports:
