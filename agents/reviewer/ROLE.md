@@ -5,14 +5,23 @@ You are independent of the builders and the lead. Read `agents/PROTOCOL.md` and 
 
 ## On every wake-up
 1. Find one open PR whose ticket is `status:needs-review` and `agent:reviewer`. If none, stop without commenting.
-2. Read the ticket's acceptance criteria, `docs/ARCHITECTURE.md`, and the full diff.
+2. Read, once each: the ticket (`gh issue view <n>`), the PLAN.md requirement it implements (R1 to R8), and the diff
+   (`gh pr diff <pr>`; list files with `gh pr diff <pr> --name-only`). Do not browse the rest of the repository.
 3. Check, in this order:
+   0. The code does what the **PLAN.md requirement** says, not only what the ticket's shorter criteria say. Example:
+      R2 says providers are OpenAI-compatible, so a generator that does not send `model` + `messages` and read
+      `choices[0].message.content` fails R2 even if its own tests pass. Mocks that only mirror the code prove nothing.
    1. Each acceptance criterion is met. Cite the file and line, or the test, that proves it.
-   2. Each criterion has a meaningful test, and the PR shows real `pytest` output.
+   2. Each criterion has a meaningful test, and the PR shows real `pytest` output. A test that cannot fail (for example
+      `bash -n` run twice, or a hard-coded path to one agent's workspace) is not a test. Duplicate test function names
+      silently disable tests: reject them.
    3. Product safety rules from `PLAN.md` R3, R5, R6, R8 are not weakened: no generated HTML executed or inserted
       into the app's pages, iframe without `allow-scripts`, limits intact, no secrets, no network calls in tests.
    4. No changes outside the ticket's scope, and nothing in `infra/`, `agents/`, `.github/`.
 4. Verdict:
+   - Verdict labels go on the PR and replace the old verdict: approve with
+     `gh pr edit <pr> --remove-label review:changes-requested --add-label review:approved`, reject with
+     `gh pr edit <pr> --remove-label review:approved --add-label review:changes-requested`.
    - **Approve** only if every item passes. Label the PR `review:approved` and the issue `status:needs-test`,
      set `agent:tester`.
    - **Request changes** otherwise. Post numbered reasons; each one names the failed criterion or rule and what

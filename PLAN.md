@@ -27,6 +27,7 @@ Acceptance:
   OpenAI-compatible base URL and key, read from environment variables.
 - A `mock` provider exists for tests, so tests never spend the free model allowance. The mock can be told
   to return a valid page, a page with a `<script>` tag, a page missing sections, or an HTTP 429.
+- OpenAI-compatible means: POST {model, messages} to <BASE_URL>/chat/completions and read choices[0].message.content; the model names are PRIMARY_MODEL / FALLBACK_MODEL.
 
 Acceptance:
 - Switching models needs only an environment change and a restart.
@@ -50,7 +51,7 @@ Acceptance:
 - On failure, the validator's error list is sent back to the model with the previous attempt, and the model tries again.
 - At most 3 attempts per request.
 - After the last failed attempt the visitor is told plainly that no valid page could be built.
-
+- Tests never use Docker, root, the network or the public URL; localhost fakes are fine. Deployment criteria are verified by static checks in the PR and by the tester after deploy.
 Acceptance:
 - A test proves that an always-invalid model response is never saved, and that exactly 3 attempts were made.
 - A test proves that a page that fails once and then passes is saved after attempt 2.
