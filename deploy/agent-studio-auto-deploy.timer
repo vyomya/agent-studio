@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Agent Studio for updates every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1min
+Unit=agent-studio-auto-deploy.service
+
+[Install]
+WantedBy=timers.target

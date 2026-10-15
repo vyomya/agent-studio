@@ -1,0 +1,9 @@
+[Unit]
+Description=Fast-forward Agent Studio from origin/main when updated
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/agent-studio-auto-deploy
+ExecStart=/bin/bash -c 'exec "$AGENT_STUDIO_REPO/deploy/auto-deploy.sh"'

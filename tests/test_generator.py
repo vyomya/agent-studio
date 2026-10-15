@@ -202,3 +202,16 @@ def test_generation_and_refinement_enter_the_same_request_slot(monkeypatch):
     generator.refine("<html>saved page</html>", "make it dark", visitor_id="same-visitor")
 
     assert entered == ["same-visitor", "same-visitor"]
+
+
+def test_retry_prompt_includes_previous_html_and_validation_errors():
+    messages = Generator._messages(
+        "a page",
+        None,
+        previous_attempt="<html>broken</html>",
+        validation_errors=["Missing or empty <title> element."],
+    )
+
+    prompt = messages[1]["content"]
+    assert "<html>broken</html>" in prompt
+    assert "Missing or empty <title> element." in prompt

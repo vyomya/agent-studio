@@ -2,7 +2,7 @@
 # Serves the FastAPI app on the public sslip.io domain.
 
 {$DOMAIN} {
-    reverse_proxy web:8000
+    reverse_proxy app:8000
     encode gzip
     log {
         output stdout

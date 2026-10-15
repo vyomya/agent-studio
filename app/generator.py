@@ -127,10 +127,23 @@ class Generator:
         self.fallback = Provider(fallback_url, fallback_key, fallback_model, "fallback")
 
     @staticmethod
-    def _messages(spec: str, style_example: str | None) -> list[dict[str, str]]:
+    def _messages(
+        spec: str,
+        style_example: str | None,
+        previous_attempt: str | None = None,
+        validation_errors: list[str] | None = None,
+    ) -> list[dict[str, str]]:
         user_content = "Create one self-contained HTML page for this specification: " + spec
         if style_example:
             user_content += " Style example: " + style_example
+        if previous_attempt is not None:
+            user_content += (
+                "\n\nYour previous HTML attempt failed validation. Return a corrected, complete "
+                "self-contained HTML document.\nValidation errors:\n- "
+                + "\n- ".join(validation_errors or [])
+                + "\nPrevious HTML attempt:\n"
+                + previous_attempt
+            )
         return [
             {"role": "system", "content": "Return a complete, self-contained HTML document with inline CSS. Return HTML only."},
             {"role": "user", "content": user_content},
@@ -138,6 +151,20 @@ class Generator:
 
     def _attempt(self, provider: Provider, messages: list[dict[str, str]]) -> ProviderResponse:
         return provider.call(messages)
+
+    def generate(
+        self,
+        spec: str,
+        style_example: str | None = None,
+        *,
+        visitor_id: str,
+        previous_attempt: str | None = None,
+        validation_errors: list[str] | None = None,
+    ) -> str:
+        """Generate within the shared allowance slot, including retry attempts."""
+        messages = self._messages(spec, style_example, previous_attempt, validation_errors)
+        with model_request_slot(visitor_id):
+            return self._request(messages)
 
     def _request(self, messages: list[dict[str, str]]) -> str:
         primary = self._attempt(self.primary, messages)
@@ -150,19 +177,6 @@ class Generator:
         if fallback.status_code == 200 and not fallback.error:
             return fallback.content
         raise GeneratorError(self.BUSY_MESSAGE)
-
-    def generate(
-        self, spec: str, style_example: str | None = None, *, visitor_id: str
-    ) -> str:
-        """Generate a page under the shared allowance and concurrency guard.
-
-        visitor_id is required so callers cannot accidentally make an
-        unmetered model request. The slot covers primary and fallback calls.
-        Refinement requests use the same slot via refine().
-        """
-        messages = self._messages(spec, style_example)
-        with model_request_slot(visitor_id):
-            return self._request(messages)
 
     def refine(self, page_html: str, instruction: str, *, visitor_id: str) -> str:
         """Refine a saved page through the same metered model request path."""
