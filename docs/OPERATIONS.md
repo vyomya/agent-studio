@@ -1,6 +1,6 @@
 # Agent Studio operations
 
-This guide covers the product deployment managed by deploy/install.sh. Run its commands from the Agent Studio checkout. The script requires root and supports Ubuntu 24.04; it installs Docker Engine and the Compose plugin if needed, enables Docker, installs the agent-studio.service systemd unit, validates the Compose configuration, starts the service, and waits for an HTTP health check.
+This guide covers the product deployment managed by deploy/install.sh. Run its commands from the Agent Studio checkout. The script requires root and supports Ubuntu 24.04; it installs Docker Engine and the Compose plugin if needed, enables Docker, installs the agent-studio.service and auto-deploy timer systemd units, validates the Compose configuration, starts the service, and waits for an HTTP health check.
 
 ## Install on Ubuntu 24.04
 
@@ -15,10 +15,10 @@ This guide covers the product deployment managed by deploy/install.sh. Run its c
 
        sudo deploy/install.sh
 
-   The installer checks the OS and Compose file, installs Docker/Compose when absent, enables and starts Docker, writes /etc/systemd/system/agent-studio.service, enables that unit, runs docker compose config, restarts the service, and checks the configured health URL. It exits with an error if the health check does not succeed.
+   The installer checks the OS and Compose file, installs Docker/Compose when absent, enables and starts Docker, writes the app and auto-deploy systemd units plus the checkout path, enables the app and timer, runs docker compose config, restarts the service, and checks the configured health URL. It exits with an error if the health check does not succeed.
 4. The health URL defaults to https://localhost/. Set DEPLOY_URL to override the complete URL, or DEPLOY_HOST to set the HTTPS host used by the installer. For example, export DEPLOY_HOST to the VM hostname before invoking sudo with the environment preserved as appropriate for your sudo policy. The installer uses curl --insecure for this initial check because a local or newly provisioned TLS endpoint may not yet have a trusted certificate.
 
-The installer is safe to re-run: it checks required tools, updates the generated systemd unit only when it differs, validates Compose, and restarts the service. It does not pull the Git repository automatically; update the checkout before running it to deploy a newer revision.
+The installer is safe to re-run: it checks required tools, updates systemd files only when they differ, validates Compose, and restarts the service. It also enables `agent-studio-auto-deploy.timer`, which checks `origin/main` two minutes after boot and every five minutes thereafter. The worker refuses to overwrite local changes or handle a non-fast-forward update; on a clean checkout, it fast-forwards `main` and restarts `agent-studio.service` only when the remote revision changed.
 
 ## Start, stop, deploy, and logs
 
@@ -29,11 +29,16 @@ The installer creates and enables agent-studio.service. Manage the Compose appli
        sudo systemctl restart agent-studio.service
        sudo systemctl status agent-studio.service --no-pager
 
-To deploy the latest main revision, update the checkout and run the installer again:
+To deploy immediately rather than waiting for the next timer check, update the checkout and run the installer again:
 
        cd /path/to/agent-studio
        git pull --ff-only origin main
        sudo deploy/install.sh
+
+Inspect the automatic deploy timer and its recent worker logs with:
+
+       sudo systemctl status agent-studio-auto-deploy.timer --no-pager
+       sudo journalctl -u agent-studio-auto-deploy.service -n 50 --no-pager
 
 The installer runs Compose in detached mode. Follow the unit's output with:
 
