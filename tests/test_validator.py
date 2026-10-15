@@ -109,32 +109,9 @@ def test_css_in_style_tag():
     errors = validate_html(html)
     assert any("css" in e.lower() for e in errors) or any("style" in e.lower() for e in errors)
 
-def test_inline_event_handler_duplicate1():
-    html = _make_html(body="<div onclick='alert(1)'>Click</div>")
-    errors = validate_html(html)
-    # Should flag the inline event handler attribute
-    assert any("inline event" in e.lower() for e in errors)
-
-
 def test_non_event_data_attributes_are_allowed():
     html = _make_html(body="<div data-onclick='not-an-event'>safe</div>")
     assert validate_html(html) == []
-
-def test_javascript_url_duplicate1():
-    html = _make_html(body="<a href='javascript:alert(1)'>bad</a>")
-    errors = validate_html(html)
-    assert any("javascript" in e.lower() for e in errors)
-
-def test_css_in_style_attribute_duplicate1():
-    html = _make_html(body="<div style='background:url(http://example.com/bg.png)'>test</div>")
-    errors = validate_html(html)
-    assert any("css" in e.lower() for e in errors) or any("style attribute" in e.lower() for e in errors)
-
-def test_css_in_style_tag_duplicate1():
-    css = "<style>body { background: url('http://example.com/bg.png'); @import url('foo.css'); }</style>"
-    html = _make_html(body=css)
-    errors = validate_html(html)
-    assert any("css" in e.lower() for e in errors) or any("style" in e.lower() for e in errors)
 
 def test_forbidden_tags():
     body = (
