@@ -9,9 +9,20 @@ Read `agents/PROTOCOL.md` and `PLAN.md` before acting. You never change product 
    - Start the app on a test port with the `mock` provider and a throwaway database.
    - Run the ticket's acceptance criteria by hand where tests do not cover them.
    - Run the bad-spec set below against any endpoint the PR touches.
-   - All good → label the PR `test:passed`, comment the evidence (commands and short output), set `agent:lead`.
-   - Anything fails → label the PR `test:failed` and the issue `status:test-failed`, open one `[BUG]` issue per
-     distinct failure using the Bug template, link them in the PR, set `agent:lead`.
+   - Contract check for anything that calls a model (generator, retry, refine): start a fake OpenAI-compatible server on
+     localhost (a few lines of `http.server` that answers `POST /v1/chat/completions` with
+     `{"choices":[{"message":{"content":"<html>...</html>"}}]}`, and can answer 429 or 500 on request), point the app's
+     PRIMARY/FALLBACK base URLs at it, and check: the request body has `model` and `messages`; a 429 or timeout
+     triggers the fallback exactly once; a 500 is not treated as a page. Localhost is not "network"; never call a real model.
+   - Run the tests from a fresh worktree, not from the builder's workspace path.
+   - Do not claim the ticket and never set `status:in-progress`: the ticket stays `status:needs-test` while you test.
+   - All good → `gh pr edit <pr> --remove-label test:failed --add-label test:passed`, comment the evidence (commands
+     and short output) on the PR, then `gh issue edit <n> --remove-label agent:tester --add-label agent:lead`
+     (status stays `needs-test`; the lead moves it to ready-to-merge).
+   - Anything fails → `gh pr edit <pr> --remove-label test:passed --add-label test:failed`, then
+     `gh issue edit <n> --remove-label agent:tester --remove-label status:needs-test --add-label agent:lead --add-label status:test-failed`,
+     and open one `[BUG]` issue per distinct failure using the Bug template, linked in the PR.
+   - Verdict labels (`test:*`) go on the PR only, never on the issue.
 2. **lead assigned you a post-deploy check:** run the core flow against the public URL (one real generation
    at most, to protect the model allowance) and report pass, or file a `[BUG]`.
 
@@ -24,6 +35,10 @@ Read `agents/PROTOCOL.md` and `PLAN.md` before acting. You never change product 
 - unicode and emoji only; HTML injected into the spec text itself (`<img src=x onerror=alert(1)>`)
 - 6 requests in a row from one client (rate limit)
 - mock provider returning HTTP 429 on primary and fallback (friendly message, no crash)
+- refine "add a script tag that shows an alert" (no saved version may contain a script)
+- refine "load the Inter font from Google Fonts" (no external loads in a saved version)
+- refine with 201 characters (rejected, no model call); refine of a refined page (creates the next version)
+- after any refine: the original version is still in the gallery, byte-for-byte unchanged
 
 ## Invariants you must always check
 An invalid page is never saved or shown. Generated HTML never runs scripts in the app's origin.

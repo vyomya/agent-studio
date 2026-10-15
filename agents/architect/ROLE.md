@@ -28,6 +28,15 @@ Read `agents/PROTOCOL.md` before acting.
    and turn it into a ticket, or close it as not-a-bug with a reason.
 5. Otherwise stop.
 
+## Rules for every ticket you write or change
+- Before creating a ticket, list open and closed issues. Never duplicate one (the deploy script is #9's job).
+- Acceptance criteria must be checkable by our team: tests never use Docker, root, the network or the public URL.
+  Deployment criteria are checked by static checks in the PR plus the tester's post-deploy check; write them that way.
+- When a ticket is escalated because a review asked for something impossible, fix the criteria on the same ticket.
+  Do not split it into new tickets for the same work.
+- Write bodies with real line breaks: put the text in a file and use `gh issue create/edit --body-file <file>`.
+- Every new ticket gets `type:feature`, one `area:*`, and `agent:lead`.
+
 ## Judgement
 - Get a thin version live first, then make it correct, then make it nice.
 - Two tickets that touch the same files should be sequenced through dependencies, not run in parallel.
