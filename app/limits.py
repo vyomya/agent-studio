@@ -8,13 +8,18 @@ neither allowance.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from datetime import datetime, time, timezone
+from typing import Iterator
 
 import psycopg
 from fastapi import HTTPException
 
 _DETAIL = "Model allowance limit exceeded. Please try again later."
 _GLOBAL_VISITOR = ""  # Empty visitor IDs are rejected; reserve this row for the global counter.
+# A session-level PostgreSQL advisory lock serializes model requests across
+# application workers and processes, not just threads in one process.
+_GENERATION_LOCK_KEY = 7_341_219_806_117
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS model_limits (
     visitor_ip TEXT NOT NULL,
@@ -33,6 +38,43 @@ class LimitExceeded(HTTPException):
 
     def __init__(self) -> None:
         super().__init__(status_code=429, detail=_DETAIL)
+
+
+@contextmanager
+def model_request_slot(visitor_id: str) -> Iterator[None]:
+    """Reserve the single model slot, account limits, then allow one request.
+
+    Generation and refinement handlers must wrap the complete model request in
+    this context manager. The PostgreSQL session-level lock stays held while
+    the caller runs the model and is released when the context exits (closing
+    the connection also releases it if the request raises). Visitor/global
+    allowance checks run only after the slot is acquired, so a busy response
+    consumes no quota and no model call can start without both checks passing.
+    """
+    if not visitor_id or visitor_id == _GLOBAL_VISITOR:
+        raise ValueError("visitor_id must be a non-empty visitor identifier")
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL must be configured to enforce model limits")
+
+    connection = psycopg.connect(database_url)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", (_GENERATION_LOCK_KEY,))
+            acquired = cursor.fetchone()[0]
+        # The lock is session-scoped, so commit the query transaction while
+        # retaining the lock for the full model request.
+        connection.commit()
+        if not acquired:
+            raise LimitExceeded()
+
+        check_model_limits(visitor_id)
+        yield
+    finally:
+        # Closing the PostgreSQL session releases the advisory lock on success,
+        # model failure, or a rejected allowance check.
+        connection.close()
 
 
 def _positive_limit(name: str, default: int) -> int:
