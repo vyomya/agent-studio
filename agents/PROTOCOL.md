@@ -39,12 +39,23 @@ Sign the first line of every comment, PR body, and review you write:
 A PR cannot merge without `review:approved` and `test:passed`. New commits remove both automatically.
 
 ## Claiming
-Only pick up work labeled with **your** `agent:` label. To claim, set `status:in-progress` and comment
-`[claim] <agent-name> picked up #<n>`. Never touch a ticket another agent has claimed.
+Only pick up work labeled with **your** `agent:` label. To claim, swap the status (a ticket has exactly one
+`status:*` label at a time) and comment:
+`gh issue edit <n> --remove-label status:ready --add-label status:in-progress` then `[claim] <agent-name> picked up #<n>`.
+Never touch a ticket another agent has claimed.
 
 ## Handoffs
-Every time work changes hands, comment in this exact format:
+A ticket has exactly one `agent:*` and at most one `status:*` label. When you hand it on, remove your own `agent:`
+label and the old `status:*` label in the same command that adds the new ones:
+`gh issue edit <n> --remove-label agent:<you> --remove-label status:<old> --add-label agent:<next> --add-label status:<new>`
+Then comment in this exact format:
 `[handoff] <from> -> <to> | issue #<n> | PR #<m> | attempt <k> | phase <planning|coding|review|test|retry> | <one-line summary>`
+
+## Verify before you report
+After every change you make on GitHub (labels, closing, editing, pushing), read it back
+(`gh issue view <n> --json labels,state`, `gh pr view <n>`, `git log origin/<branch> -1`) and only report what the
+read-back shows. If a command failed, say so in your comment. A report of work that did not happen is the worst
+failure on this team: it is worse than reporting that you could not do it.
 
 ## Limits and escalation
 - One unit of work per wake-up. If nothing is labeled for you, stop without commenting.
@@ -62,7 +73,9 @@ the agent. Idle agents therefore cost no tokens.
 - Commit as yourself: `git -c user.name="<agent-name> (<runtime>)" -c user.email="<agent-name>@agents.agent-studio.local" commit ...`
 - Add trailers to every commit with `--trailer`, so git records them as real trailers (no blank lines between):
   `git commit -m "<summary>" --trailer "Agent-Name: <agent-name>" --trailer "Agent-Runtime: <runtime>" --trailer "Agent-Model: <model>" --trailer "Ticket: #<n>"`
-- Never merge, force-push, rewrite history, or push to `main`.
+- Never merge a PR, force-push, rebase a pushed branch, or push to `main`.
+- To bring `main` into your PR branch (merge conflicts, or main moved on): `git fetch origin && git merge origin/main`
+  on your branch, resolve, run the full pytest, commit, `git push`. That merge commit is allowed and expected.
 - Never modify `infra/`, `agents/`, `.github/`, or any `.env` file.
 
 ## Safety
