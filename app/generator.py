@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import requests
 
+from .limits import model_request_slot
+
 __all__ = ["Generator", "GeneratorError", "GeneratorConfigError", "Provider", "MockProvider"]
 
 
@@ -155,10 +157,16 @@ class Generator:
         spec: str,
         style_example: str | None = None,
         *,
+        visitor_id: str,
         previous_attempt: str | None = None,
         validation_errors: list[str] | None = None,
     ) -> str:
+        """Generate within the shared allowance slot, including retry attempts."""
         messages = self._messages(spec, style_example, previous_attempt, validation_errors)
+        with model_request_slot(visitor_id):
+            return self._request(messages)
+
+    def _request(self, messages: list[dict[str, str]]) -> str:
         primary = self._attempt(self.primary, messages)
         if primary.status_code == 200 and not primary.error:
             return primary.content
@@ -169,3 +177,24 @@ class Generator:
         if fallback.status_code == 200 and not fallback.error:
             return fallback.content
         raise GeneratorError(self.BUSY_MESSAGE)
+
+    def refine(self, page_html: str, instruction: str, *, visitor_id: str) -> str:
+        """Refine a saved page through the same metered model request path."""
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Return a complete, self-contained HTML document with inline CSS. "
+                    "Apply the requested changes to the supplied page and return HTML only."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Refine this HTML page according to the instruction below. "
+                    f"Instruction: {instruction} Existing HTML: {page_html}"
+                ),
+            },
+        ]
+        with model_request_slot(visitor_id):
+            return self._request(messages)

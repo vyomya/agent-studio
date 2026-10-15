@@ -36,6 +36,8 @@ def generate_valid_page(
     generator: Generator,
     save_page: SavePage,
     style_example: str | None = None,
+    *,
+    visitor_id: str,
 ) -> GeneratedPage:
     """Try up to three times; save only after code validation succeeds.
 
@@ -49,6 +51,7 @@ def generate_valid_page(
         html = generator.generate(
             spec,
             style_example,
+            visitor_id=visitor_id,
             previous_attempt=previous_attempt,
             validation_errors=errors,
         )
