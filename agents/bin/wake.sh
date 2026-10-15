@@ -106,7 +106,10 @@ board_problems() {  # prints one "- #N: ..." line per contradiction between the 
   local issues problems runlog
   issues="$(gh issue list --state open --limit 100 --json number,title,labels,body)"
   problems="$(jq -r --argjson closed "$(closed_issues)" "$JQ_DEPS"'
-    .[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
+    (.[] | select((.title != "Run log") and (.title | startswith("[human]") | not)
+                  and (any(.labels[].name; startswith("type:")) | not))
+         | "- #\(.number): no type:* label (and so no owner flow); add type:feature, area:*, agent:lead or close it"),
+    (.[] | select(any(.labels[].name; . == "type:feature" or . == "type:bug")) |
     ([.labels[].name | select(startswith("agent:"))]) as $owners |
     ([.labels[].name | select(startswith("area:")) | sub("area:"; "")]) as $areas |
     (((.body // "") | capture("## Area\\s*\\n\\s*(?<a>[a-z]+)") | .a)? // "") as $body_area |
@@ -114,7 +117,7 @@ board_problems() {  # prints one "- #N: ..." line per contradiction between the 
     ([.labels[].name | select(startswith("status:"))]) as $st |
     (if ($st | length) > 1 then "- #\(.number): several status labels \($st) (must be at most one)" else empty end),
     ({"status:ready":["agent:builder-core","agent:builder-web"], "status:in-progress":["agent:builder-core","agent:builder-web"],
-      "status:needs-review":["agent:reviewer"], "status:needs-test":["agent:tester"],
+      "status:needs-review":["agent:reviewer"], "status:needs-test":["agent:tester","agent:lead"],
       "status:changes-requested":["agent:lead","agent:builder-core","agent:builder-web"],
       "status:test-failed":["agent:lead","agent:builder-core","agent:builder-web"],
       "status:ready-to-merge":["agent:human"], "status:blocked":["agent:architect","agent:human"]}) as $allowed |
@@ -126,13 +129,39 @@ board_problems() {  # prints one "- #N: ..." line per contradiction between the 
     (if ($areas | length) == 1 and $body_area != "" and $body_area != $areas[0]
        then "- #\(.number): label area:\($areas[0]) but body says \($body_area)" else empty end),
     (if (any(.labels[].name; startswith("agent:builder-")) and ((deps - $closed) | length) > 0)
-       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end)
+       then "- #\(.number): assigned to a builder but depends on open \(deps - $closed | map("#\(.)") | join(", "))" else empty end))
   ' <<<"$issues")"
   runlog="$(jq -r '[.[] | select(.title == "Run log")][0].number // empty' <<<"$issues")"
   if [ -n "$runlog" ] && [ "$(gh issue view "$runlog" --json isPinned -q .isPinned)" != true ]; then
     problems+=$'\n'"- #$runlog: Run log is not pinned"
   fi
   sed '/^$/d' <<<"$problems"
+}
+
+# Merge readiness (pure code): open PRs with review:approved + test:passed and no blocking label, whose ticket is not
+# yet handed to the human. The lead turns each into status:ready-to-merge + agent:human.
+merge_ready() {
+  gh pr list --state open --limit 50 --json number,labels,body --jq '
+    .[] | select(any(.labels[].name; . == "review:approved") and any(.labels[].name; . == "test:passed")
+                 and (any(.labels[].name; . == "review:changes-requested" or . == "test:failed") | not))
+        | "\(.number) \((.body // "") | capture("(?i)closes #(?<n>[0-9]+)").n? // "")"' |
+  while read -r pr n; do
+    [ -n "$n" ] || { echo "PR #$pr: approved and tested but has no 'Closes #<n>' line; comment on the PR asking the builder to add it"; continue; }
+    labels="$(gh issue view "$n" --json labels,state -q 'select(.state == "OPEN") | [.labels[].name] | join(",")')"
+    [ -n "$labels" ] || continue
+    [[ ",$labels," == *",status:ready-to-merge,"* && ",$labels," == *",agent:human,"* ]] && continue
+    rm_args="$(tr ',' '\n' <<<"$labels" | grep -E '^(agent|status):' | sed 's/^/--remove-label /' | tr '\n' ' ')"
+    echo "PR #$pr / #$n: run exactly: gh issue edit $n $rm_args--add-label agent:human --add-label status:ready-to-merge"
+  done
+}
+
+# PR-level contradictions (pure code): both verdicts at once, or merge conflicts with main.
+pr_problems() {
+  gh pr list --state open --limit 50 --json number,labels,mergeable --jq '
+    .[] | ([.labels[].name]) as $l |
+    (if ($l | index("review:approved")) and ($l | index("review:changes-requested")) then "- PR #\(.number): has both review:approved and review:changes-requested (the later verdict must replace the earlier)" else empty end),
+    (if ($l | index("test:passed")) and ($l | index("test:failed")) then "- PR #\(.number): has both test:passed and test:failed" else empty end),
+    (if .mergeable == "CONFLICTING" then "- PR #\(.number): has merge conflicts with main (send its ticket back to its builder to rebase)" else empty end)'
 }
 
 PENDING=""; PHASE=""; TICKET=""
@@ -150,22 +179,28 @@ case "$AGENT" in
     PHASE="planning"
     ;;
   lead)
-    board="$(gh issue list --state open --limit 200 --json number,labels,updatedAt)$(gh pr list --state all --limit 50 --json number,labels,state,updatedAt)"
-    fp="$(printf '%s' "$board" | sha256sum | cut -c1-16)"
-    last_fp="$(cat "$STATE/lead.fp" 2>/dev/null || true)"
+    # The lead is woken only when code finds something for it to decide (saves the model allowance).
+    CANDIDATES="$(dispatch_candidates)"
+    REQUEUE="$(requeue_actions)"
+    PROBLEMS="$(board_problems; pr_problems)"
+    MERGE="$(merge_ready)"
+    BUGS="$(gh issue list --state open --label agent:lead --label type:bug --json number,title --jq '.[] | "#\(.number) \(.title)"')"
+    STUCK="$(gh issue list --state open --label status:in-progress --json number,title,updatedAt |
+      jq -r --arg cut "$(date -u -d '-90 min' +%FT%TZ)" '.[] | select(.updatedAt < $cut) | "#\(.number) \(.title) (no activity for 90+ min)"')"
+    work="$CANDIDATES$REQUEUE$PROBLEMS$MERGE$BUGS$STUCK"
+    if [ -z "${work//[[:space:]]/}" ]; then log "skip: nothing for the lead to decide"; exit 0; fi
+    fp="$(sha256sum <<<"$work" | cut -c1-16)"
     last_run="$(stat -c %Y "$STATE/lead.fp" 2>/dev/null || echo 0)"
-    if [ "$fp" = "$last_fp" ] && [ $(( $(date +%s) - last_run )) -lt 3600 ]; then
-      log "skip: board unchanged since last run"; exit 0
+    if [ "$fp" = "$(cat "$STATE/lead.fp" 2>/dev/null)" ] && [ $(( $(date +%s) - last_run )) -lt 3600 ]; then
+      log "skip: same open decisions as the last lead run (retry after 60 min)"; exit 0
     fi
     PENDING="$(gh issue list --state open --limit 100 --json number,title,labels \
       --jq '.[] | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"')"
-    # Dispatch facts are computed by code, not judged by the model: a ticket is a candidate only if the lead
-    # owns it, it has no status yet, every "Depends on" issue is closed, and its area's builder holds nothing.
-    CANDIDATES="$(dispatch_candidates)"
-    REQUEUE="$(requeue_actions)"
-    PENDING+=$'\n\n'"REWORK ACTIONS (computed by code; do these first, exactly as written):"$'\n'"${REQUEUE:-none}"
-    PROBLEMS="$(board_problems)"
     PENDING+=$'\n\n'"BOARD PROBLEMS (computed by code; fix these before anything else, see item 0 of your role):"$'\n'"${PROBLEMS:-none}"
+    PENDING+=$'\n\n'"REWORK ACTIONS (computed by code; do these exactly as written):"$'\n'"${REQUEUE:-none}"
+    PENDING+=$'\n\n'"NEW BUGS FOR YOU:"$'\n'"${BUGS:-none}"
+    PENDING+=$'\n\n'"READY TO MERGE (computed by code; item 3 of your role):"$'\n'"${MERGE:-none}"
+    PENDING+=$'\n\n'"STUCK TICKETS (computed by code; item 6 of your role):"$'\n'"${STUCK:-none}"
     PENDING+=$'\n\n'"DISPATCH CANDIDATES (computed by code; assign only from this list, at most one per builder):"$'\n'"${CANDIDATES:-none}"
     PHASE="planning"
     ;;
@@ -214,6 +249,21 @@ PROMPT="$LOGDIR/$TS.prompt.md"
 if [ "$DRY" = "--dry-run" ]; then
   log "dry-run: would run $RUNTIME/$MODEL on ${TICKET:-n/a} (phase $PHASE); prompt at $PROMPT"
   echo "----- pending -----"; echo "$PENDING"; exit 0
+fi
+
+# Budget guard (code): paid OpenAI models stop once the ledger says the cap is spent; the run then uses FALLBACK.
+if [[ "$MODEL" == openai/* ]] && [ -n "${OPENAI_BUDGET_USD:-}" ]; then
+  spent="$(jq -s --argjson pin "$OPENAI_PRICE_IN" --argjson pc "$OPENAI_PRICE_CACHED" --argjson pout "$OPENAI_PRICE_OUT" '
+      [.[] | select(.provider == "openai")
+           | ((.prompt_tokens // 0) * $pin + (.cache_read_tokens // 0) * $pc + (.completion_tokens // 0) * $pout) / 1000000]
+      | add // 0' "$LEDGER" 2>/dev/null || echo 0)"
+  if awk -v s="$spent" -v b="$OPENAI_BUDGET_USD" 'BEGIN{exit !(s >= b)}'; then
+    log "budget: OpenAI spend \$$spent >= cap \$$OPENAI_BUDGET_USD; using $FALLBACK instead of $MODEL"
+    sed -i "s|Model: $MODEL\.|Model: $FALLBACK (OpenAI budget cap reached).|" "$PROMPT"
+    MODEL="$FALLBACK"; FALLBACK=""
+  else
+    log "budget: OpenAI spend so far \$$spent of \$$OPENAI_BUDGET_USD"
+  fi
 fi
 
 # 3. one call at a time per provider
@@ -310,7 +360,7 @@ jq -nc \
 #    so a handoff that claims changes which did not happen is caught by the system itself.
 board_check() {
   local problems runlog
-  problems="$(board_problems)"
+  problems="$(board_problems; pr_problems)"
   runlog="$(gh issue list --state open --limit 100 --json number,title --jq '[.[] | select(.title == "Run log")][0].number // empty')"
   [ -z "$problems" ] && { log "board-check: clean"; return 0; }
   log "board-check: $(wc -l <<<"$problems") problem(s)"
