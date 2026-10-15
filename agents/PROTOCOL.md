@@ -73,7 +73,9 @@ the agent. Idle agents therefore cost no tokens.
 - Commit as yourself: `git -c user.name="<agent-name> (<runtime>)" -c user.email="<agent-name>@agents.agent-studio.local" commit ...`
 - Add trailers to every commit with `--trailer`, so git records them as real trailers (no blank lines between):
   `git commit -m "<summary>" --trailer "Agent-Name: <agent-name>" --trailer "Agent-Runtime: <runtime>" --trailer "Agent-Model: <model>" --trailer "Ticket: #<n>"`
-- Never merge, force-push, rewrite history, or push to `main`.
+- Never merge a PR, force-push, rebase a pushed branch, or push to `main`.
+- To bring `main` into your PR branch (merge conflicts, or main moved on): `git fetch origin && git merge origin/main`
+  on your branch, resolve, run the full pytest, commit, `git push`. That merge commit is allowed and expected.
 - Never modify `infra/`, `agents/`, `.github/`, or any `.env` file.
 
 ## Safety

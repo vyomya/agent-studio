@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import uuid
+from unittest.mock import Mock
 from pathlib import Path
 
 import psycopg
@@ -12,9 +13,9 @@ from psycopg import sql
 import pytest
 from fastapi.testclient import TestClient
 
-from app import storage
+from app import limits, storage
 from app import main as main_module
-from app.generator import GeneratorError
+from app.generator import GeneratorError, MockProvider, ProviderResponse
 from app.main import app
 from app.retry import InvalidPageError
 
@@ -136,3 +137,105 @@ def test_container_style_main_module_imports_from_app_directory():
     )
 
     assert result.returncode == 0, result.stderr
+
+
+VALID_GENERATED_HTML = """<!doctype html><html><head><title>Example</title></head><body>
+<h1>Example</h1><section>One</section><section>Two</section><section>Three</section>
+</body></html>"""
+
+
+def install_mock_responses(monkeypatch, responses):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    responses = iter(responses)
+    calls = []
+
+    def respond(_provider, messages):
+        calls.append(messages)
+        return ProviderResponse(status_code=200, content=next(responses))
+
+    monkeypatch.setattr(MockProvider, "call", respond)
+    return calls
+
+
+def test_retries_spend_one_visitor_generation_allowance(monkeypatch):
+    visitor_id = f"retry-allowance-{uuid.uuid4().hex}"
+    invalid = "<html><body><h1>Incomplete</h1></body></html>"
+    calls = install_mock_responses(monkeypatch, [invalid, invalid, VALID_GENERATED_HTML])
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "5")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "10000")
+
+    with TestClient(app) as client:
+        response = client.post("/generate", data={"spec": "A page"}, headers={"X-Forwarded-For": visitor_id}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert len(calls) == 3
+    with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
+        row = connection.execute(
+            "SELECT hour_count, day_count FROM model_limits WHERE visitor_ip = %s",
+            (visitor_id,),
+        ).fetchone()
+    assert row == (1, 1)
+    assert storage.list_pages()[0].attempts == 3
+
+
+def test_sixth_generate_from_forwarded_ip_is_rejected_without_model_call(monkeypatch):
+    visitor_id = f"hourly-limit-{uuid.uuid4().hex}"
+    calls = install_mock_responses(monkeypatch, [VALID_GENERATED_HTML] * 5)
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "5")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "10000")
+
+    with TestClient(app) as client:
+        responses = [
+            client.post("/generate", data={"spec": f"Page {i}"}, headers={"X-Forwarded-For": f"{visitor_id}, 10.0.0.1"}, follow_redirects=False)
+            for i in range(6)
+        ]
+
+    assert [response.status_code for response in responses[:5]] == [303] * 5
+    assert responses[5].status_code == 429
+    assert "You have reached the page limit, please try again later." in responses[5].text
+    assert len(calls) == 5
+
+
+def test_forwarded_visitors_have_separate_allowances(monkeypatch):
+    visitor_ids = [f"visitor-a-{uuid.uuid4().hex}", f"visitor-b-{uuid.uuid4().hex}"]
+    calls = install_mock_responses(monkeypatch, [VALID_GENERATED_HTML] * 2)
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "1")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "10000")
+
+    with TestClient(app) as client:
+        responses = []
+        for visitor_id in visitor_ids:
+            headers = {"X-Forwarded-For": visitor_id}
+            responses.append(client.post("/generate", data={"spec": "First"}, headers=headers, follow_redirects=False))
+            responses.append(client.post("/generate", data={"spec": "Second"}, headers=headers, follow_redirects=False))
+
+    assert [response.status_code for response in responses] == [303, 429, 303, 429]
+    assert len(calls) == 2
+
+
+def test_held_generation_slot_returns_busy_without_spending_allowance(monkeypatch):
+    visitor_id = f"busy-slot-{uuid.uuid4().hex}"
+    calls = install_mock_responses(monkeypatch, [VALID_GENERATED_HTML])
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "5")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "10000")
+
+    with psycopg.connect(os.environ["DATABASE_URL"]) as lock_connection:
+        lock_connection.execute(limits._CREATE_TABLE)
+        lock_connection.execute("SELECT pg_advisory_lock(%s)", (limits._GENERATION_LOCK_KEY,))
+        with TestClient(app) as client:
+            response = client.post("/generate", data={"spec": "A page"}, headers={"X-Forwarded-For": visitor_id})
+        lock_connection.execute("SELECT pg_advisory_unlock(%s)", (limits._GENERATION_LOCK_KEY,))
+
+    assert response.status_code == 503
+    assert "service is currently busy" in response.text
+    assert calls == []
+    with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
+        row = connection.execute(
+            "SELECT hour_count, day_count FROM model_limits WHERE visitor_ip = %s",
+            (visitor_id,),
+        ).fetchone()
+    assert row is None

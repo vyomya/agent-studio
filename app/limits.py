@@ -16,6 +16,7 @@ import psycopg
 from fastapi import HTTPException
 
 _DETAIL = "Model allowance limit exceeded. Please try again later."
+_BUSY_DETAIL = "The service is currently busy, please try again later."
 _GLOBAL_VISITOR = ""  # Empty visitor IDs are rejected; reserve this row for the global counter.
 # A session-level PostgreSQL advisory lock serializes model requests across
 # application workers and processes, not just threads in one process.
@@ -38,6 +39,13 @@ class LimitExceeded(HTTPException):
 
     def __init__(self) -> None:
         super().__init__(status_code=429, detail=_DETAIL)
+
+
+class ModelBusy(HTTPException):
+    """Raised when another generation currently holds the model slot."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=503, detail=_BUSY_DETAIL)
 
 
 @contextmanager
@@ -67,7 +75,7 @@ def model_request_slot(visitor_id: str) -> Iterator[None]:
         # retaining the lock for the full model request.
         connection.commit()
         if not acquired:
-            raise LimitExceeded()
+            raise ModelBusy()
 
         check_model_limits(visitor_id)
         yield
