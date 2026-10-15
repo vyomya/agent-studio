@@ -1,6 +1,14 @@
-import subprocess, os, pytest
+from pathlib import Path
+import subprocess
 
-def test_script_syntax():
-    # Ensure the script passes bash syntax check
-    result = subprocess.run(['bash', '-n', 'deploy/install.sh'], cwd=os.getcwd(), capture_output=True, text=True)
-    assert result.returncode == 0, f"Syntax error: {result.stderr}"
+
+def test_install_script_syntax() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        ["bash", "-n", str(repo_root / "deploy" / "install.sh")],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

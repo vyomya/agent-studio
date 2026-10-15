@@ -1,137 +1,98 @@
 #!/usr/bin/env bash
-# Deploy and install script for Agent Studio web service
-#
-# This script is intended to be run once as root on a fresh Ubuntu 22.04 VM.
-# It is idempotent – running it multiple times will not cause errors or
-# duplicate installations.
-
+# Install Agent Studio on a fresh Ubuntu 24.04 VM and enable it at boot.
 set -euo pipefail
 
-# Helper for logging
 log() { printf '\n==> %s\n' "$*"; }
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-# Ensure we are running as root
-if [ "$(id -u)" -ne 0 ]; then
-  echo "This script must be run as root (e.g., sudo ./deploy/install.sh)" >&2
-  exit 1
+if [[ "$(id -u)" -ne 0 ]]; then
+  fail 'Run as root (for example: sudo deploy/install.sh).'
+fi
+
+if [[ ! -r /etc/os-release ]]; then
+  fail 'Cannot identify the operating system; Ubuntu 24.04 is required.'
+fi
+# shellcheck disable=SC1091
+. /etc/os-release
+if [[ "${ID:-}" != ubuntu || "${VERSION_ID:-}" != 24.04 ]]; then
+  fail "Ubuntu 24.04 is required (detected ${PRETTY_NAME:-unknown})."
 fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEPLOY_DIR="$REPO_ROOT/deploy"
-COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
+COMPOSE_FILE="$REPO_ROOT/deploy/docker-compose.yml"
+[[ -f "$COMPOSE_FILE" ]] || fail "Compose file not found: $COMPOSE_FILE"
 
-########################
-# 1. Install Docker
-########################
-if command -v docker >/dev/null 2>&1; then
-  log "Docker already installed"
-else
-  log "Installing Docker (apt)"
+if ! command -v docker >/dev/null 2>&1; then
+  log 'Installing Docker Engine and Compose plugin'
   apt-get update -y
   apt-get install -y ca-certificates curl gnupg lsb-release
-  mkdir -p /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-    https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
+  . /etc/os-release
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME:-$VERSION_CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
   apt-get update -y
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-  log "Docker installation complete"
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
-# Verify Docker daemon is running
+if ! docker compose version >/dev/null 2>&1; then
+  log 'Installing Docker Compose plugin'
+  apt-get update -y
+  apt-get install -y docker-compose-plugin
+fi
+docker compose version >/dev/null || fail 'Docker Compose plugin is unavailable.'
+
+systemctl enable docker
 if ! systemctl is-active --quiet docker; then
-  log "Starting Docker daemon"
   systemctl start docker
 fi
 
-########################
-# 2. Install Docker Compose (via Docker plugin)
-########################
-# The Docker Compose CLI plugin is installed with the Docker package above.
-# Verify that "docker compose" works.
-if docker compose version >/dev/null 2>&1; then
-  log "Docker Compose plugin available"
-else
-  log "Docker Compose plugin not found – attempting manual install"
-  COMPOSE_VERSION="v2.27.0"
-  curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  chmod +x /usr/local/bin/docker-compose
-  log "Docker Compose installed"
-fi
-
-########################
-# 3. Pull latest images and bring up services
-########################
-if [ -f "$COMPOSE_FILE" ]; then
-  log "Pulling latest Docker images"
-  docker compose -f "$COMPOSE_FILE" pull
-  log "Starting services"
-  docker compose -f "$COMPOSE_FILE" up -d
-else
-  echo "Compose file not found at $COMPOSE_FILE" >&2
-  exit 1
-fi
-
-########################
-# 4. Verify application reachable
-########################
-HOST="${DEPLOY_HOST:-localhost}"
-URL="https://$HOST"
-log "Checking application health at $URL"
-# Wait up to 30 seconds for the service to become healthy
-for i in {1..30}; do
-  if curl -k -s -o /dev/null -w "%{http_code}" "$URL" | grep -q '^2'; then
-    log "Application responded with HTTP 200"
-    break
-  fi
-  sleep 1
-done
-
-########################
-# 4. Verify application reachable
-HOST="${DEPLOY_HOST:-localhost}"
-URL="https://$HOST"
-log "Checking application health at $URL"
-# Wait up to 30 seconds for the service to become healthy
-for i in {1..30}; do
-  if curl -k -s -o /dev/null -w "%{http_code}" "$URL" | grep -q '^2'; then
-    log "Application responded with HTTP 200"
-    break
-  fi
-  sleep 1
-done
-
-# Apply database migrations (placeholder)
-# NOTE: Replace this with the actual migration command for the application.
-log "Applying database migrations (placeholder)"
-# Example: docker compose -f "$COMPOSE_FILE" exec app python manage.py migrate
-
-# Install systemd unit to auto‑start services on reboot
-SYSTEMD_UNIT="/etc/systemd/system/agent-studio.service"
-log "Installing systemd unit $SYSTEMD_UNIT"
-cat <<'EOF' > "$SYSTEMD_UNIT"
+SYSTEMD_UNIT=/etc/systemd/system/agent-studio.service
+DOCKER_BIN="$(command -v docker)"
+UNIT_TMP="$(mktemp)"
+trap 'rm -f "$UNIT_TMP"' EXIT
+cat > "$UNIT_TMP" <<EOF
 [Unit]
-Description=Agent Studio Web Service
-After=network.target docker.service
+Description=Agent Studio
+Requires=docker.service
+After=network-online.target docker.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/docker compose -f $COMPOSE_FILE up -d
-ExecStop=/usr/bin/docker compose -f $COMPOSE_FILE down
+WorkingDirectory=$REPO_ROOT
+ExecStart=$DOCKER_BIN compose -f $COMPOSE_FILE up --build -d
+ExecStop=$DOCKER_BIN compose -f $COMPOSE_FILE down
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-systemctl daemon-reload
+if ! cmp -s "$UNIT_TMP" "$SYSTEMD_UNIT"; then
+  install -m 0644 "$UNIT_TMP" "$SYSTEMD_UNIT"
+  systemctl daemon-reload
+fi
 systemctl enable agent-studio.service
 
-########################
-# 5. Summary
-########################
-log "Deploy/install completed successfully"
-exit 0
+log 'Compose configuration to be deployed:'
+cat "$COMPOSE_FILE"
+docker compose -f "$COMPOSE_FILE" config --quiet
+systemctl restart agent-studio.service
 
+HEALTH_URL="${DEPLOY_URL:-https://${DEPLOY_HOST:-localhost}/}"
+log "Waiting for the application at $HEALTH_URL"
+healthy=0
+for _ in {1..30}; do
+  if curl --insecure --fail --silent --output /dev/null --max-time 2 "$HEALTH_URL"; then
+    healthy=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$healthy" -ne 1 ]]; then
+  fail "Health check failed for $HEALTH_URL after 30 seconds."
+fi
+
+log 'Agent Studio deployment completed successfully.'
