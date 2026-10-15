@@ -1,16 +1,14 @@
 """Test package initialization.
 
-Ensures that the repository root (which contains the ``app`` package) is on
-``sys.path`` when pytest runs the tests. Some test runners alter the import
-path to the directory containing the test file, causing ``import app`` to fail.
-Appending the parent directory (the project root) makes the import reliable.
+Some test runners alter the import path to the directory containing this file.
+Ensure the repository root is available so imports such as ``app.validator``
+resolve reliably.
 """
 
 import os
 import sys
 
-# Add the repository root to the import search path.
-repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if repo_root not in sys.path:
-    sys.path.append(repo_root)
-
+# Put the project root first if it is not already present.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
