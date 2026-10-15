@@ -68,7 +68,7 @@ def test_external_link_and_image():
     html = _make_html(body=body)
     errors = validate_html(html)
     assert any("link" in e.lower() for e in errors)
-    assert any("img" in e.lower() for e in errors)
+    assert any("src/srcset" in e.lower() for e in errors)
 
 
 def test_oversized_html():
@@ -108,23 +108,23 @@ def test_css_in_style_tag():
     errors = validate_html(html)
     assert any("css" in e.lower() for e in errors) or any("style" in e.lower() for e in errors)
 
-def test_inline_event_handler():
+def test_inline_event_handler_duplicate1():
     html = _make_html(body="<div onclick='alert(1)'>Click</div>")
     errors = validate_html(html)
     # Should flag the inline event handler attribute
     assert any("inline event" in e.lower() for e in errors)
 
-def test_javascript_url():
+def test_javascript_url_duplicate1():
     html = _make_html(body="<a href='javascript:alert(1)'>bad</a>")
     errors = validate_html(html)
     assert any("javascript" in e.lower() for e in errors)
 
-def test_css_in_style_attribute():
+def test_css_in_style_attribute_duplicate1():
     html = _make_html(body="<div style='background:url(http://example.com/bg.png)'>test</div>")
     errors = validate_html(html)
     assert any("css" in e.lower() for e in errors) or any("style attribute" in e.lower() for e in errors)
 
-def test_css_in_style_tag():
+def test_css_in_style_tag_duplicate1():
     css = "<style>body { background: url('http://example.com/bg.png'); @import url('foo.css'); }</style>"
     html = _make_html(body=css)
     errors = validate_html(html)
@@ -143,3 +143,66 @@ def test_forbidden_tags():
     assert any("embed" in e.lower() for e in errors)
     assert any("meta" in e.lower() and "refresh" in e.lower() for e in errors)
 
+
+
+def test_obfuscated_javascript_url_rejected():
+    html = _make_html(body="<a href='java&#x09;script:alert(1)'>bad</a>")
+    assert any("javascript" in error.lower() for error in validate_html(html))
+
+
+def test_safe_relative_url_allowed():
+    assert validate_html(_make_html(body="<a href='/about'>About</a>")) == []
+
+
+def test_external_resources_in_all_supported_attributes_rejected():
+    body = (
+        "<video src='https://cdn.example/movie.mp4'></video>"
+        "<audio><source src='//cdn.example/audio.mp3'></audio>"
+        "<img srcset='/small.png 1x, https://cdn.example/large.png 2x'>"
+        "<base href='https://cdn.example/'><link href='//cdn.example/site.css'>"
+    )
+    errors = validate_html(_make_html(body=body))
+    assert any("src/srcset" in error.lower() for error in errors)
+    assert any("base" in error.lower() for error in errors)
+    assert any("link" in error.lower() for error in errors)
+
+
+def test_local_resource_attributes_allowed():
+    body = (
+        "<video src='/movie.mp4'></video><audio><source src='audio.mp3'></audio>"
+        "<img srcset='/small.png 1x, /large.png 2x'><base href='/'>"
+        "<link href='/local.css' rel='stylesheet'>"
+    )
+    assert validate_html(_make_html(body=body)) == []
+
+
+
+def test_each_external_resource_location_rejected_independently():
+    cases = [
+        ("<video src='https://cdn.example/movie.mp4'></video>", "src/srcset"),
+        ("<audio><source src='//cdn.example/audio.mp3'></audio>", "src/srcset"),
+        ("<img srcset='/small.png 1x, https://cdn.example/large.png 2x'>", "src/srcset"),
+        ("<base href='https://cdn.example/'>", "base"),
+        ("<link href='//cdn.example/site.css'>", "link"),
+    ]
+    for snippet, expected in cases:
+        errors = validate_html(_make_html(body=snippet))
+        assert any(expected in error.lower() for error in errors), snippet
+
+
+def test_safe_resource_locations_allowed_independently():
+    cases = [
+        "<video src='/movie.mp4'></video>",
+        "<audio><source src='audio.mp3'></audio>",
+        "<img srcset='/small.png 1x, /large.png 2x'>",
+        "<base href='/'>",
+        "<link href='/site.css'>",
+    ]
+    for snippet in cases:
+        assert validate_html(_make_html(body=snippet)) == [], snippet
+
+def test_validation_preserves_original_html():
+    html = _make_html(body="<video src='https://cdn.example/movie.mp4'></video>")
+    original = html[:]
+    validate_html(html)
+    assert html == original

@@ -12,9 +12,8 @@ Rules enforced (as described in issue #4):
 * The total byte size of the HTML must not exceed 100 KB.
 * No ``<script>`` tags are allowed.
 * No ``<iframe>`` tags are allowed.
-* External resources are prohibited – this includes ``<link>`` tags whose
-  ``href`` attribute starts with ``http://``/``https://``/``//`` and ``<img>``
-  tags with an ``src`` attribute that is an absolute URL.
+* External resources are prohibited in src/srcset attributes and in external
+  href values on link/base elements.
 
 The implementation uses the standard library ``html.parser`` to avoid adding a
 runtime dependency.  For each rule that fails a clear message is appended to the
@@ -39,8 +38,8 @@ class _TagCollector(HTMLParser):
     * ``section_count`` – number of ``<section>`` tags.
     * ``script_present`` – ``True`` if any ``<script>`` tag appears.
     * ``iframe_present`` – ``True`` if any ``<iframe>`` tag appears.
-    * ``external_links`` – ``href`` values that are absolute URLs.
-    * ``external_images`` – ``src`` values that are absolute URLs.
+    * ``external_links``/``external_bases`` – external href values.
+    * ``external_sources`` – external src or srcset values.
     """
 
     def __init__(self) -> None:
@@ -52,7 +51,8 @@ class _TagCollector(HTMLParser):
         self.script_present = False
         self.iframe_present = False
         self.external_links: List[str] = []
-        self.external_images: List[str] = []
+        self.external_sources: List[tuple[str, str]] = []
+        self.external_bases: List[str] = []
         # New collections for additional validation rules
         self.inline_event_handlers: List[tuple[str, str]] = []  # (tag, attribute)
         self.javascript_urls: List[tuple[str, str]] = []  # (tag, attribute)
@@ -73,16 +73,13 @@ class _TagCollector(HTMLParser):
         elif tag_low == "iframe":
             self.iframe_present = True
         elif tag_low == "link":
-            href = dict(attrs).get("href", "")
+            href = dict(attrs).get("href", "") or ""
             if _is_absolute_url(href):
                 self.external_links.append(href)
-        elif tag_low == "img":
-            src = dict(attrs).get("src", "")
-            if _is_absolute_url(src):
-                self.external_images.append(src)
-            # Detect javascript: URLs in img src
-            if src and src.strip().lower().startswith("javascript:"):
-                self.javascript_urls.append((tag_low, "src"))
+        elif tag_low == "base":
+            href = dict(attrs).get("href", "") or ""
+            if _is_absolute_url(href):
+                self.external_bases.append(href)
         elif tag_low == "style":
             # Enter style tag to capture its inner CSS content
             self._in_style = True
@@ -103,9 +100,13 @@ class _TagCollector(HTMLParser):
             # Inline event handlers (e.g., onclick, onmouseover)
             if name_low.startswith("on"):
                 self.inline_event_handlers.append((tag_low, name_low))
-            # javascript: URLs in any attribute (scheme detection independent of URL type)
-            if value.strip().lower().startswith("javascript:"):
+            # Browsers ignore ASCII whitespace/control characters in URL schemes.
+            if _is_javascript_url(value):
                 self.javascript_urls.append((tag_low, name_low))
+            if name_low == "src" and _is_absolute_url(value):
+                self.external_sources.append((tag_low, name_low))
+            elif name_low == "srcset" and _srcset_has_external_url(value):
+                self.external_sources.append((tag_low, name_low))
             # Style attribute: check for CSS url(...) or @import
             if name_low == "style":
                 if re.search(r"url\s*\(", value, re.IGNORECASE) or re.search(r"@import", value, re.IGNORECASE):
@@ -126,15 +127,29 @@ class _TagCollector(HTMLParser):
                 self.css_issues.append("<style> tag contains disallowed CSS")
 
 
+def _normalize_url(url: str) -> str:
+    return "".join(char for char in url if ord(char) > 32 and ord(char) != 127)
+
+
+def _is_javascript_url(value: str) -> bool:
+    return _normalize_url(value).lower().startswith("javascript:")
+
+
+def _srcset_has_external_url(srcset: str) -> bool:
+    candidates = (candidate.strip().split(maxsplit=1)[0] for candidate in srcset.split(",") if candidate.strip())
+    return any(_is_absolute_url(candidate) for candidate in candidates)
+
+
 def _is_absolute_url(url: str) -> bool:
     """Return ``True`` if *url* looks like an absolute HTTP(S) URL.
 
     The check is deliberately simple – it matches schemes ``http``, ``https`` and
     protocol‑relative URLs starting with ``//``.
     """
-    if not url:
+    normalized = _normalize_url(url)
+    if not normalized:
         return False
-    return bool(re.match(r"^(https?:)?//", url, re.IGNORECASE))
+    return bool(re.match(r"^(https?:)?//", normalized, re.IGNORECASE))
 
 
 def validate_html(html: str) -> List[str]:
@@ -187,11 +202,13 @@ def validate_html(html: str) -> List[str]:
     if parser.iframe_present:
         errors.append("<iframe> tags are not allowed.")
 
-    # 7. No external resources (links or images).
+    # 7. No external resources in src/srcset or relevant href attributes.
     if parser.external_links:
         errors.append("External <link> resources are prohibited.")
-    if parser.external_images:
-        errors.append("External <img> sources are prohibited.")
+    if parser.external_sources:
+        errors.append("External src/srcset resources are prohibited.")
+    if parser.external_bases:
+        errors.append("External <base> URLs are prohibited.")
 
     # 8. Inline event handlers (attributes starting with 'on').
     for tag, attr in parser.inline_event_handlers:
