@@ -1,21 +1,70 @@
-"""Minimal FastAPI application for the thin deployable skeleton.
+"""FastAPI spec form and safe gallery for validated generated pages."""
+from __future__ import annotations
 
-Provides a single ``GET /`` endpoint that returns a plain JSON response.
-The implementation is deliberately tiny – just enough to be started by the
-deployment script and to satisfy the acceptance criteria for issue #14.
-"""
+from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
-app = FastAPI()
+if __package__:  # Tests import app.main; the container runs main:app from /app.
+    from .generator import Generator, GeneratorError
+    from .retry import InvalidPageError, generate_valid_page
+    from .storage import initialize_database, list_pages, save_page
+else:  # pragma: no cover - exercised by the container's /app working directory.
+    from generator import Generator, GeneratorError
+    from retry import InvalidPageError, generate_valid_page
+    from storage import initialize_database, list_pages, save_page
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_database()
+    yield
 
 
-@app.get("/")
-def root() -> dict:
-    """Health‑check endpoint returning a simple JSON payload.
+app = FastAPI(lifespan=lifespan)
+templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 
-    The public URL is expected to proxy to this endpoint via Caddy, so a
-    ``200`` response here satisfies the ticket's requirement.
-    """
+
+@app.get("/health")
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
+def _gallery(request: Request, message: str | None = None, status_code: int = 200) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="gallery.html",
+        context={"pages": list_pages(), "message": message},
+        status_code=status_code,
+    )
+
+
+@app.get("/", response_class=HTMLResponse)
+def gallery(request: Request) -> HTMLResponse:
+    return _gallery(request)
+
+
+@app.post("/generate")
+def generate(
+    request: Request,
+    spec: str = Form(default=""),
+    style_example: str = Form(default=""),
+):
+    spec = spec.strip()
+    if not spec:
+        return _gallery(request, "Please enter a page description.", 400)
+    if len(spec) > 500:
+        return _gallery(request, "Page descriptions must be 500 characters or fewer.", 400)
+
+    try:
+        generate_valid_page(
+            spec,
+            Generator(),
+            save_page,
+            style_example=style_example.strip() or None,
+        )
+    except (InvalidPageError, GeneratorError):
+        return _gallery(request, "Could not build a valid page. Please try again.", 503)
+    return RedirectResponse(url="/", status_code=303)

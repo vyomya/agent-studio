@@ -4,8 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from app.generator import Generator
-from app.validator import validate_html
+if __package__:
+    from .generator import Generator
+    from .validator import validate_html
+else:  # Container runs modules directly from its /app working directory.
+    from generator import Generator
+    from validator import validate_html
 
 MAX_ATTEMPTS = 3
 
