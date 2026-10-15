@@ -35,11 +35,21 @@ class GeneratedPage:
 SavePage = Callable[[str, str, int], object]
 
 
+def _strip_markdown_fence(html: str) -> str:
+    """Remove a complete optional Markdown code fence around generated HTML."""
+    lines = html.strip().splitlines()
+    if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return html
+
+
 def generate_valid_page(
     spec: str,
     generator: Generator,
     save_page: SavePage,
     style_example: str | None = None,
+    *,
+    visitor_id: str,
 ) -> GeneratedPage:
     """Try up to three times; save only after code validation succeeds.
 
@@ -53,9 +63,11 @@ def generate_valid_page(
         html = generator.generate(
             spec,
             style_example,
+            visitor_id=visitor_id,
             previous_attempt=previous_attempt,
             validation_errors=errors,
         )
+        html = _strip_markdown_fence(html)
         errors = validate_html(html)
         if not errors:
             saved_record = save_page(spec, html, attempt)

@@ -64,7 +64,10 @@ def generate(
             Generator(),
             save_page,
             style_example=style_example.strip() or None,
+            visitor_id=request.client.host if request.client else "unknown",
         )
-    except (InvalidPageError, GeneratorError):
+    except InvalidPageError:
         return _gallery(request, "Could not build a valid page. Please try again.", 503)
+    except GeneratorError:
+        return _gallery(request, "The service is currently busy. Please try again later.", 503)
     return RedirectResponse(url="/", status_code=303)

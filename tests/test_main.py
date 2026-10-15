@@ -1,7 +1,10 @@
 """Persistence, gallery order, and generated-page isolation tests."""
 
 import os
+import subprocess
+import sys
 import uuid
+from pathlib import Path
 
 import psycopg
 from psycopg.conninfo import make_conninfo
@@ -10,7 +13,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import storage
+from app import main as main_module
+from app.generator import GeneratorError
 from app.main import app
+from app.retry import InvalidPageError
 
 
 @pytest.fixture(autouse=True)
@@ -99,3 +105,34 @@ def test_invalid_spec_is_rejected_without_saving():
     assert too_long.status_code == 400
     assert "500 characters" in too_long.text
     assert storage.list_pages() == []
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (InvalidPageError(3, ["invalid"]), "Could not build a valid page"),
+        (GeneratorError("provider unavailable"), "service is currently busy"),
+    ],
+)
+def test_generate_shows_distinct_validation_and_provider_failures(monkeypatch, failure, message):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setattr(main_module, "generate_valid_page", lambda *args, **kwargs: (_ for _ in ()).throw(failure))
+
+    with TestClient(app) as client:
+        response = client.post("/generate", data={"spec": "A page"})
+
+    assert response.status_code == 503
+    assert message in response.text
+
+
+def test_container_style_main_module_imports_from_app_directory():
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    result = subprocess.run(
+        [sys.executable, "-c", "import main; assert main.app is not None"],
+        cwd=app_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
