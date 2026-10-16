@@ -71,6 +71,17 @@ _VALID_HTML = """<!doctype html><html><head><title>Mock page</title></head><body
 <h1>Mock page</h1><section><h2>First</h2></section>
 <section><h2>Second</h2></section><section><h2>Third</h2></section></body></html>"""
 
+_SYSTEM_PROMPT = """Return one complete HTML document that parses as HTML.
+Make it self-contained and use inline CSS.
+Include a non-empty <title>.
+Include exactly one <h1>.
+Include at least three <section> elements.
+Keep the document at or below 100 KB.
+Do not include <script> elements, inline event handlers, or javascript: URLs.
+Do not load external resources: avoid external src/srcset URLs, external <link> or <base> href URLs, CSS url(...), and @import.
+Do not include <iframe>, <object>, <embed>, or a meta refresh.
+Return only the HTML document, no Markdown fences."""
+
 
 class MockProvider(Provider):
     """Deterministic provider selected with GENERATOR_PROVIDER=mock.
@@ -160,7 +171,7 @@ class Generator:
                 + previous_attempt
             )
         return [
-            {"role": "system", "content": "Return a complete, self-contained HTML document with inline CSS. Return HTML only."},
+            {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ]
 
@@ -215,10 +226,7 @@ class Generator:
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "Return a complete, self-contained HTML document with inline CSS. "
-                    "Apply the requested changes to the supplied page and return HTML only."
-                ),
+                "content": _SYSTEM_PROMPT,
             },
             {
                 "role": "user",
