@@ -109,11 +109,15 @@ def test_spec_form_has_description_style_and_generate_controls():
 
 def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypatch):
     monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_RESPONSE", "valid")
     monkeypatch.setenv("MOCK_REFINE_RESPONSE", "valid")
-    original_html = VALID_GENERATED_HTML
-    original = storage.save_page("A pricing page", original_html, 1)
 
     with TestClient(app) as client:
+        generated_response = client.post(
+            "/generate", data={"spec": "A pricing page"}, follow_redirects=False
+        )
+        original = storage.list_pages()[0]
+        original_html = original.html
         v2_response = client.post(
             f"/pages/{original.id}/refine",
             data={"instruction": "make it dark mode"},
@@ -125,21 +129,35 @@ def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypat
             data={"instruction": "make the header larger"},
             follow_redirects=False,
         )
+        v1_again_response = client.post(
+            f"/pages/{original.id}/refine",
+            data={"instruction": "make the footer smaller"},
+            follow_redirects=False,
+        )
         gallery = client.get("/")
 
+    v1, v2 = storage.get_page(original.id), storage.get_page(v2.id)
+    v3 = storage.list_pages()[1]
+    v4 = storage.list_pages()[0]
+    assert generated_response.status_code == 303
     assert v2_response.status_code == 303
     assert v3_response.status_code == 303
-    v2, v3, unchanged_original = storage.get_page(v2.id), storage.list_pages()[0], storage.get_page(original.id)
-    assert v2 is not None and v3 is not None and unchanged_original is not None
-    assert v2.version == 2 and v2.parent_id == original.id
+    assert v1_again_response.status_code == 303
+    assert v1 is not None and v2 is not None and v3 is not None and v4 is not None
+    assert v1.version == 1 and v1.parent_id is None
+    assert v2.version == 2 and v2.parent_id == v1.id
     assert v2.refine_instruction == "make it dark mode"
     assert "background: #111" in v2.html
     assert v3.version == 3 and v3.parent_id == v2.id
     assert v3.refine_instruction == "make the header larger"
-    assert unchanged_original.html == original_html
-    assert unchanged_original.version == 1 and unchanged_original.parent_id is None
+    assert v4.version == 4 and v4.parent_id == v1.id
+    assert v4.refine_instruction == "make the footer smaller"
+    assert v1.html == original_html
     assert "v3 of 'A pricing page' · make the header larger" in gallery.text
     assert "v2 of 'A pricing page' · make it dark mode" in gallery.text
+    assert "v4 of 'A pricing page' · make the footer smaller" in gallery.text
+    assert gallery.text.count("v2 of 'A pricing page' · make it dark mode") == 1
+    assert "Refine instruction:" not in gallery.text
     assert gallery.text.index("v3 of 'A pricing page'") < gallery.text.index("v2 of 'A pricing page'")
     assert 'placeholder="make it dark mode"' in gallery.text
     assert 'name="instruction" maxlength="200"' in gallery.text

@@ -35,7 +35,6 @@
     <h3>{{ page.spec }} · v{{ page.version }}</h3>
     {% endif %}
     <p>Created {{ page.created_at.isoformat() }} · {{ page.attempts }} attempt(s)</p>
-    {% if page.refine_instruction %}<p>Refine instruction: {{ page.refine_instruction }}</p>{% endif %}
     <iframe title="Generated page for {{ page.spec }}" sandbox srcdoc="{{ page.html }}"></iframe>
     <details><summary>View source</summary><pre>{{ page.html }}</pre></details>
     <form action="/pages/{{ page.id }}/refine" method="post">
