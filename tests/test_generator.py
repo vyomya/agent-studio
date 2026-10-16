@@ -123,7 +123,10 @@ def test_http_503_uses_fallback_once(monkeypatch):
         configure_real_provider(monkeypatch, url)
         assert Generator().generate("spec") == "<html>fallback</html>"
 
-    assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
+    models = [payload["model"] for _, payload, _ in server.requests_received]
+    assert models == ["primary-model", "fallback-model"]
+    assert models.count("primary-model") == 1
+    assert models.count("fallback-model") == 1
 
 
 def _check_post_timeout(monkeypatch, setting, expected):
