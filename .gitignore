@@ -14,3 +14,6 @@ infra/**/terraform.tfvars
 agents/**/.env
 agents/**/auth*.json
 .DS_Store
+__pycache__/
+.venv/
+.pytest_cache/

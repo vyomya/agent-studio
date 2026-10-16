@@ -1,0 +1,340 @@
+# Handoff trail (vyomya/agent-studio)
+
+Every `[claim]` and `[handoff]` line posted by the agents, oldest first.
+
+- 2026-10-14T12:51:09Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/13#issuecomment-6168753635)
+  - `[handoff] architect -> lead | issue #13 | PR N/A | attempt 1 | phase planning | Fixed ticket set: closed duplicate #8, created skeleton ticket #14, corrected area on #2, updated Depends on for all tickets, relabeled to agent:lead, updated Run log and pinned issue.`
+- 2026-10-14T13:22:33Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/3#issuecomment-6169367530)
+  - `[handoff] lead -> builder-core | issue #3 | attempt 1 | phase planning | assigned to builder-core.`
+- 2026-10-14T13:22:36Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6169368553)
+  - `[handoff] lead -> builder-web | issue #2 | attempt 1 | phase planning | assigned to builder-web.`
+- 2026-10-14T13:30:18Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/3#issuecomment-6169519176)
+  - `[claim] lead picked up #3`
+- 2026-10-14T13:31:21Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6169539278)
+  - `[handoff] lead -> builder-web | issue #14 | PR #- | attempt 1 | phase coding | Assigned to builder-web for core implementation.`
+- 2026-10-14T15:33:36Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/21#issuecomment-6172036936)
+  - `[handoff] builder-web -> reviewer | issue #14 | PR #21 | attempt 1 | phase coding | PR opened with FastAPI skeleton implementation`
+- 2026-10-14T15:56:57Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/21#issuecomment-6172513716)
+  - `[handoff] reviewer -> lead | issue #14 | PR #21 | attempt 1 | phase review | Requested changes due to extraneous .venv files and missing test output.`
+- 2026-10-14T18:21:37Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6175297097)
+  - `[handoff] lead -> builder-web | issue #14 | attempt 1 | phase coding | Ready for builder`
+- 2026-10-14T19:29:42Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6176593644)
+  - `[handoff] builder-web -> reviewer | issue #14 | PR #21 | attempt 2 | phase rework | Removed .venv, added pytest output, verified deployment.`
+- 2026-10-14T19:37:01Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6176729738)
+  - `[handoff] reviewer -> lead | issue #14 | PR #21 | attempt 1 | phase review | Requested changes: missing test for deploy script`
+- 2026-10-14T20:29:28Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6177770225)
+  - `[handoff] reviewer -> lead | issue #14 | PR #21 | attempt 1 | phase review | Requested changes: missing deploy script`
+- 2026-10-14T20:31:47Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6177814328)
+  - `[handoff] architect -> lead | issue #14 | PR # | attempt 2 | phase planning | Split work into deploy script (#27) and tests (#28) and updated dependencies.`
+- 2026-10-14T20:51:42Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/14#issuecomment-6178192265)
+  - `[handoff] architect -> lead | issue #14 | PR #none | attempt 1 | phase planning | Unblocked: dependencies #27 and #28 fleshed out, status set to ready.`
+- 2026-10-14T20:55:21Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/3#issuecomment-6178271977)
+  - `[handoff] builder-core -> reviewer | issue #3 | PR #29 | attempt 1 | phase coding | Implemented generator configuration, retry loop, and unit tests`
+- 2026-10-14T21:02:47Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/3#issuecomment-6178437229)
+  - `[handoff] reviewer -> tester | issue #3 | PR #29 | attempt 1 | phase review | Reviewed PR #29: all acceptance criteria met, tests pass, safety rules intact.`
+- 2026-10-14T21:20:49Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6178764009)
+  - `[handoff] lead -> builder-core | issue #4 | PR # | attempt 1 | phase planning | Assigned to builder-core`
+- 2026-10-14T21:20:55Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6178765668)
+  - `[handoff] lead -> builder-web | issue #9 | PR # | attempt 1 | phase planning | Assigned to builder-web`
+- 2026-10-14T21:25:07Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6178842561)
+  - `[claim] builder-core picked up #4`
+- 2026-10-14T21:27:48Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6178889413)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 1 | validator added and tested`
+- 2026-10-14T21:36:19Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6179031074)
+  - `[claim] builder-web picked up #9`
+- 2026-10-14T21:38:44Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6179070481)
+  - `[handoff] builder-web -> reviewer | issue #9 | PR #31 | attempt 1 | phase coding | Added deploy/install.sh and pytest for syntax check`
+- 2026-10-14T21:50:47Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6179273344)
+  - `[handoff] lead -> builder-web | issue #9 | PR #31 | attempt 1 | phase retry | sent back to builder-web for rework.`
+- 2026-10-14T21:50:50Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6179274380)
+  - `[handoff] lead -> builder-web | issue #9 | PR #31 | attempt 1 | phase retry | sent back to builder-web for rework.`
+- 2026-10-14T21:59:49Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6179423653)
+  - `[handoff] reviewer -> lead | issue #4 | PR #30 | attempt 1 | phase review | Missing validation rules per PLAN.md R3 (inline event handlers, javascript: URLs, CSS url/@import, object/embed/meta refresh)`
+- 2026-10-14T22:00:50Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6179439452)
+  - `[handoff] lead -> builder-core | issue #4 | PR #30 | attempt 2 | phase review | Sent back for retry.`
+- 2026-10-14T22:09:31Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6179580783)
+  - `[handoff] reviewer -> lead | issue #9 | PR #31 | attempt 1 | phase review | Missing documentation and unverifiable acceptance criteria`
+- 2026-10-14T22:10:43Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6179602738)
+  - `[handoff] lead -> builder-web | issue #9 | PR #31 | attempt 2 | phase coding | Refreshed deploy/install script`
+- 2026-10-14T22:37:29Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6180064801)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 2 | phase coding | Added missing validation checks and tests per review`
+- 2026-10-14T22:48:42Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/31#issuecomment-6180217816)
+  - `[handoff] builder-web -> reviewer | issue #9 | PR #31 | attempt 2 | phase coding | Added migration placeholder, systemd unit, documentation, and placeholder compose file`
+- 2026-10-14T22:49:12Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6180224411)
+  - `[claim] reviewer picked up #4`
+- 2026-10-14T22:50:05Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6180235785)
+  - `[handoff] reviewer -> tester | issue #4 | PR #30 | attempt 1 | phase review | HTML validator approved`
+- 2026-10-14T23:30:15Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6180777359)
+  - `[claim] tester picked up #9`
+- 2026-10-14T23:46:59Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/31#issuecomment-6180999545)
+  - `[handoff] builder-web -> tester | issue #9 | PR #31 | attempt 2 | phase test | Handoff after implementing deploy/install script, ready for testing.\n\n[builder-web | OpenClaw | ollama-cloud/gpt-oss:120b]`
+- 2026-10-14T23:50:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6181042336)
+  - `[handoff] tester -> lead | issue #4 | PR #30 | attempt 1 | phase test | HTML validator PR already tested and passed, handing to lead for merge.`
+- 2026-10-15T02:15:12Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6182863103)
+  - `[handoff] builder-web -> architect | issue #9 | PR #31 | attempt 3 | phase retry | Escalating after two prior rejection rounds for scope/replan before further builder work.`
+- 2026-10-15T02:21:34Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6182941693)
+  - `[handoff] architect -> lead | issue #9 | PR #31 | attempt 1 | phase planning | Refined scope and acceptance criteria, set status:ready and agent:lead for pickup.`
+- 2026-10-15T02:28:41Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183023940)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 3 | phase retry | Added coverage for external src/srcset/link/base resources, obfuscated javascript URLs, and unique test names; pytest 24 passed.`
+- 2026-10-15T02:38:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183136260)
+  - `[handoff] reviewer -> lead | issue #4 | PR #30 | attempt 1 | phase review | Rejected PR due to duplicate test function names that silently disable tests.`
+- 2026-10-15T02:38:23Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/3#issuecomment-6183137910)
+  - `[handoff] builder-core -> reviewer | issue #3 | PR #29 | attempt 2 | phase retry | Fixed all five product-owner findings; OpenAI-compatible payload, model env config, strict status handling, declared dependencies, selectable mock, and localhost protocol tests.`
+- 2026-10-15T02:40:53Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183166216)
+  - `[handoff] lead -> architect | issue #4 | PR #30 | attempt 3 | phase rework | Ticket escalated after 3 rejections. Escalation to architect for design clarification.,`
+- 2026-10-15T02:48:44Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/3#issuecomment-6183257944)
+  - `[handoff] reviewer -> tester | issue #3 | PR #29 | attempt 2 | phase review | Approved PR #29 after verifying it meets the generator configuration requirements and includes meaningful tests.`
+- 2026-10-15T02:54:35Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183326290)
+  - `[claim] builder-core picked up #4`
+- 2026-10-15T02:57:10Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183360493)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 4 | phase retry | Added malformed-HTML structure checks and tests; confirmed 29 unique test names and pytest 29 passed.`
+- 2026-10-15T03:06:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6183467483)
+  - `[claim] builder-web picked up #9`
+- 2026-10-15T03:07:01Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6183476734)
+  - `[handoff] builder-web -> architect | issue #9 | PR #31 | attempt 3 | phase planning | Blocked pending scope/dependency clarification after two prior rejection rounds.`
+- 2026-10-15T03:09:18Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/30#issuecomment-6183503819)
+  - `[handoff] reviewer -> lead | issue #4 | PR #30 | attempt 1 | phase review | Reviewer rejected due to duplicate tests and missing test coverage`
+- 2026-10-15T03:24:36Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183681388)
+  - `[claim] builder-core picked up #4 for the reviewer rework on PR #30.`
+- 2026-10-15T03:25:33Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183692647)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 5 | phase retry | Added parser-exception error-path coverage; confirmed unique tests, immutability coverage, and 30 passing tests; commit 38ad0af pushed.`
+- 2026-10-15T03:28:17Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183726172)
+  - `[handoff] reviewer -> lead | issue #4 | PR #30 | attempt 1 | phase review | Reviewer found duplicate test names in validator tests, requesting changes`
+- 2026-10-15T03:36:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6183815183)
+  - `[claim] builder-web picked up #34`
+- 2026-10-15T03:36:42Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6183820522)
+  - `[handoff] builder-web -> lead | issue #34 | PR #none | attempt 1 | phase planning | Shared checkout is currently on #9 with an uncommitted deploy/install.sh change; avoiding branch/worktree operations that could interfere. Please re-dispatch after #9 is handed off or provide an isolated worktree.`
+- 2026-10-15T03:47:03Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6183935045)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 6 | phase retry | Merged main and resolved initializer conflicts without rewriting history; 42 tests pass.`
+- 2026-10-15T03:53:48Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/30#issuecomment-6184010341)
+  - `[handoff] reviewer -> lead | issue #4 | PR #30 | attempt 1 | phase review | Requested changes due to duplicate test names`
+- 2026-10-15T03:55:05Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6184024608)
+  - `[handoff] lead -> builder-core | issue #7 | PR #- | attempt 1 | phase planning | assigned to builder-core for core work`
+- 2026-10-15T04:04:38Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6184136339)
+  - `[handoff] builder-web -> reviewer | issue #9 | PR #31 | attempt 1 | phase retry | Merged current main and resolved the conflict; reworked installer and portable checks, pushed 531b9fd, and documented verification/manual checks in PR #31.`
+- 2026-10-15T04:06:17Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6184157077)
+  - `[claim] builder-web picked up #34`
+- 2026-10-15T04:07:23Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6184170114)
+  - `[handoff] builder-web -> lead | issue #34 | PR #31 | attempt 2 | phase planning | Dependency #9 is still open; PR #31 is unmerged and its merge-gate check failed, so operations docs would describe an unmerged installer baseline.`
+- 2026-10-15T04:14:23Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6184257961)
+  - `[claim] builder-core picked up #7`
+- 2026-10-15T04:15:26Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6184270737)
+  - `[handoff] builder-core -> architect | issue #7 | PR #- | attempt 1 | phase planning | current main has no generation/refine request paths, so the required pre-model guard has no integration point`
+- 2026-10-15T04:21:09Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6184336536)
+  - `[handoff] reviewer -> tester | issue #9 | PR #31 | attempt 1 | phase review | Approved PR for deploy/install.sh script after verifying it meets the ticket and PLAN.md R7 requirements.`
+- 2026-10-15T04:26:39Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6184400363)
+  - `[handoff] builder-web -> lead | issue #34 | PR #none | attempt 3 | phase planning | Dependency #9 remains open in needs-test and PR #31 is unmerged; checkout remains on t9-deploy-install, so operations docs cannot safely target the merged main baseline yet.`
+- 2026-10-15T04:36:57Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6184520634)
+  - `[handoff] builder-web -> architect | issue #34 | PR #none | attempt 4 | phase planning | Blocked pending the #9 installer baseline or architect direction.`
+- 2026-10-15T04:41:28Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6184572969)
+  - `[handoff] architect -> lead | issue #34 | PR #N/A | attempt 1 | phase planning | documentation details provided and ticket unblocked.`
+- 2026-10-15T04:44:45Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6184610651)
+  - `[claim] builder-core picked up #7`
+- 2026-10-15T04:45:22Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6184617684)
+  - `[handoff] builder-core -> architect | issue #7 | PR #- | attempt 1 | phase planning | blocked pending consistent dependency, route integration point, and limit configuration/persistence contract`
+- 2026-10-15T04:54:33Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6184722686)
+  - `[claim] builder-core picked up #4 for PR #30 rework attempt 7`
+- 2026-10-15T04:56:29Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6184745060)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 7 | phase retry | Removed four redundant duplicate validator tests; commit b11290d pushed and 38 tests pass.`
+- 2026-10-15T04:59:22Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6184778685)
+  - `[claim] reviewer picked up #4`
+- 2026-10-15T05:02:48Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6184824970)
+  - `[handoff] reviewer -> tester | issue #4 | PR #30 | attempt 1 | phase review | HTML validator implementation satisfies all R3 rules with comprehensive tests.`
+- 2026-10-15T05:04:11Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/9#issuecomment-6184841799)
+  - `[handoff] lead -> human | issue #9 | PR #31 | ready to merge`
+- 2026-10-15T05:14:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6184967403)
+  - `[claim] builder-core picked up #7`
+- 2026-10-15T05:18:00Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6185014964)
+  - `[handoff] builder-core -> reviewer | issue #7 | PR #36 | attempt 1 | phase review | Added shared PostgreSQL allowance guard and mocked tests; pytest: 19 passed.`
+- 2026-10-15T05:19:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/30#issuecomment-6185030155)
+  - `[handoff] reviewer -> lead | issue #4 | PR #30 | attempt 1 | phase review | Rejected PR due to duplicate test function names in tests/test_validator.py; requested unique test names and verification of each validation rule.`
+- 2026-10-15T05:20:37Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6185046102)
+  - `[handoff] lead -> architect | issue #4 | PR #<m> | attempt 5 | phase rework | escalated due to repeated rejections`
+- 2026-10-15T05:26:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6185113600)
+  - `[claim] builder-web picked up #33`
+- 2026-10-15T05:29:11Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6185155509)
+  - `[handoff] reviewer -> tester | issue #34 | PR #35 | attempt 1 | phase review | Approved PR #35 for deployment operations documentation`
+- 2026-10-15T05:30:25Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6185175502)
+  - `[handoff] builder-web -> reviewer | issue #33 | PR #37 | attempt 1 | phase coding | Added the app/PostgreSQL 16/Caddy Compose stack, isolated networks and persistent volumes, tests, and a docs link; pytest and Compose config pass.`
+- 2026-10-15T05:36:01Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6185252959)
+  - `[claim] builder-core picked up #4 for PR #30 rework attempt 8`
+- 2026-10-15T05:37:12Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6185267517)
+  - `[handoff] builder-core -> reviewer | issue #4 | PR #30 | attempt 8 | phase retry | Verified current head has 26 unique validator tests and all 38 tests pass; no new code change was needed.`
+- 2026-10-15T05:39:11Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6185292461)
+  - `[handoff] reviewer -> tester | issue #33 | PR #37 | attempt 1 | phase review | Approved PR for full Docker Compose stack`
+- 2026-10-15T05:49:10Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6185427504)
+  - `[handoff] reviewer -> lead | issue #7 | PR #36 | attempt 1 | phase review | Requested changes: missing concurrency limit per PLAN.md R6.`
+- 2026-10-15T05:50:53Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6185451045)
+  - `[handoff] lead -> builder-core | issue #7 | PR #36 | attempt 2 | phase retry | moved to builder-core for rework`
+- 2026-10-15T06:02:39Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6185619660)
+  - `[handoff] reviewer -> tester | issue #4 | PR #30 | attempt 1 | phase review | Approved PR #30; all tests pass, safety rules upheld.`
+- 2026-10-15T06:06:49Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6185674648)
+  - `[handoff] builder-core -> reviewer | issue #7 | PR #36 | attempt 2 | phase review | Added a PostgreSQL advisory-lock request slot; busy calls get the friendly 429 before quota/model work. pytest: 20 passed.`
+- 2026-10-15T06:10:21Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6185722207)
+  - `[handoff] lead -> human | issue #33 | PR #37 | ready to merge`
+- 2026-10-15T06:21:25Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6185871845)
+  - `[handoff] tester -> lead | issue #4 | PR #30 | attempt 1 | phase test | HTML validator tests passed successfully`
+- 2026-10-15T06:30:37Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/4#issuecomment-6186000082)
+  - `[handoff] lead -> human | issue #4 | PR #30 | ready to merge`
+- 2026-10-15T06:40:31Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/34#issuecomment-6186141792)
+  - `[handoff] lead -> human | issue #34 | PR #35 | ready to merge`
+- 2026-10-15T07:20:45Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/36#issuecomment-6186753525)
+  - `[handoff] lead -> human | issue #7 | PR #36 | ready to merge`
+- 2026-10-15T13:08:01Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6192810794)
+  - `[handoff] builder-core -> reviewer | issue #7 | PR #36 | attempt 3 | phase retry | Fixed daily aggregation across hourly rows, set the global default to 40, and verified the six-hour case against DATABASE_URL_TEST; pytest: 22 passed.`
+- 2026-10-15T13:21:33Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6193083050)
+  - `[handoff] builder-web -> reviewer | issue #33 | PR #37 | attempt 2 | phase retry | Merged latest main without rewriting history; fixed Caddy routing, DOMAIN/env-file setup, and YAML-backed Compose checks; 47 tests pass.`
+- 2026-10-15T13:32:27Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6193308608)
+  - `[handoff] reviewer -> tester | issue #33 | PR #37 | attempt 1 | phase review | Approved PR #37 for Docker Compose stack`
+- 2026-10-15T13:33:05Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6193321363)
+  - `[handoff] lead -> builder-core | issue #7 | PR #36 | attempt 2 | phase retry | rework submitted`
+- 2026-10-15T13:41:34Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/38#issuecomment-6193497023)
+  - `[handoff] lead -> builder-web | issue #38 | PR #0 | attempt 1 | phase planning | assigned to builder-web`
+- 2026-10-15T13:50:43Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/33#issuecomment-6193693931)
+  - `[handoff] lead -> human | issue #33 | PR #37 | ready to merge`
+- 2026-10-15T13:51:25Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6193711708)
+  - `[handoff] architect -> lead | issue #7 | PR #N/A | attempt 1 | phase planning | Added rate‑limiting design and handoff to lead for implementation.`
+- 2026-10-15T13:51:28Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6193712873)
+  - `[handoff] architect -> lead | issue #7 | PR #N/A | attempt 1 | phase planning | Added rate‑limiting design and handoff to lead for implementation.`
+- 2026-10-15T13:56:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/38#issuecomment-6193814632)
+  - `[claim] builder-web picked up #38`
+- 2026-10-15T14:00:54Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/38#issuecomment-6193910602)
+  - `[handoff] builder-web -> reviewer | issue #38 | PR #39 | attempt 1 | phase review | auto-deploy timer and guarded fast-forward worker implemented; initial PR read-back omitted the required number, corrected read-back verified #39 open`
+- 2026-10-15T14:01:17Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/5#issuecomment-6193918106)
+  - `[handoff] lead -> builder-core | issue #5 | PR #none | attempt 1 | phase planning | assigned to builder-core`
+- 2026-10-15T14:01:23Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/38#issuecomment-6193920346)
+  - `[handoff] builder-web -> reviewer | issue #38 | PR #39 | attempt 1 | phase review | auto-deploy timer and guarded fast-forward worker implemented; initial PR read-back omitted the required number, corrected read-back verified #39 open`
+- 2026-10-15T14:05:28Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/36#issuecomment-6194003826)
+  - `[handoff] builder-core -> architect | issue #7 | PR #36 | attempt 5 | phase retry | generation/refinement handlers are absent and architect notes conflict on whether integration belongs in #7 or #3`
+- 2026-10-15T14:05:56Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6194014662)
+  - `[handoff] builder-core -> architect | issue #7 | PR #36 | attempt 5 | phase retry | blocked on absent generation/refinement handlers and conflicting architect ownership guidance`
+- 2026-10-15T14:09:38Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/38#issuecomment-6194096515)
+  - `[handoff] reviewer -> tester | issue #38 | PR #39 | attempt 1 | phase review | Approved auto-deploy timer and scripts`
+- 2026-10-15T14:15:04Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/5#issuecomment-6194209211)
+  - `[claim] builder-core picked up #5`
+- 2026-10-15T14:20:15Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/5#issuecomment-6194317905)
+  - `[handoff] builder-core -> reviewer | issue #5 | PR #40 | attempt 1 | phase coding | bounded validator retries; 51 pytest tests pass`
+- 2026-10-15T14:25:01Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6194420057)
+  - `[claim] builder-core picked up #7`
+- 2026-10-15T14:25:58Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6194440313)
+  - `[handoff] builder-core -> architect | issue #7 | PR #36 | attempt 6 | phase retry | requested handler integration is impossible on current main and architecture notes conflict on ownership and PostgreSQL vs Redis`
+- 2026-10-15T14:31:01Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/38#issuecomment-6194551395)
+  - `[handoff] tester -> lead | issue #38 | PR #39 | attempt 1 | phase test | auto-deploy PR tested and passed`
+- 2026-10-15T14:31:31Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6194564036)
+  - `[handoff] architect -> lead | issue #7 | PR #N/A | attempt 1 | phase planning | Provided design for model allowance limits and moved ticket to lead for implementation.`
+- 2026-10-15T14:39:51Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/5#issuecomment-6194739207)
+  - `[handoff] reviewer -> tester | issue #5 | PR #40 | attempt 1 | phase review | Approved retry loop implementation; all acceptance criteria met with tests`
+- 2026-10-15T14:47:05Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6194892552)
+  - `[claim] builder-core picked up #7`
+- 2026-10-15T14:47:44Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6194905941)
+  - `[handoff] builder-core -> reviewer | issue #7 | PR #36 | attempt 7 | phase retry | wired the shared allowance/concurrency slot into generate and refine provider paths; 25 tests pass`
+- 2026-10-15T15:01:44Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6195204842)
+  - `[handoff] reviewer -> tester | issue #7 | PR #36 | attempt 3 | phase review | Approved PR enforcing model allowance limits`
+- 2026-10-15T15:02:33Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/5#issuecomment-6195222722)
+  - `[handoff] lead -> human | issue #5 | PR #40 | ready to merge`
+- 2026-10-15T15:27:35Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6195767274)
+  - `[handoff] builder-core -> reviewer | issue #7 | PR #36 | attempt 8 | phase retry | merged latest main without rewriting history, resolved conflicts and preserved retry/allowance behavior; pytest 70 passed`
+- 2026-10-15T15:31:06Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6195839898)
+  - `[handoff] lead -> builder-web | issue #6 | PR #0 | attempt 1 | phase planning | assign to builder-web`
+- 2026-10-15T15:36:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6195947688)
+  - `[claim] builder-web picked up #6`
+- 2026-10-15T15:41:02Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6196045794)
+  - `[handoff] reviewer -> tester | issue #7 | PR #36 | attempt 1 | phase review | Approved PR for model allowance limits`
+- 2026-10-15T15:43:07Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6196086513)
+  - `[handoff] builder-web -> reviewer | issue #6 | PR #41 | attempt 1 | phase coding | PostgreSQL persistence and newest-first sandboxed gallery implemented; pytest 59 passed.`
+- 2026-10-15T15:53:49Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6196312098)
+  - `[handoff] reviewer -> tester | issue #6 | PR #41 | attempt 1 | phase review | Approved PR for saving pages and gallery with PostgreSQL persistence and sandboxed iframe gallery.`
+- 2026-10-15T16:20:52Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/7#issuecomment-6196864282)
+  - `[handoff] agent:tester -> agent:lead | issue #7 | PR #36 | attempt 3 | test | tested successfully, 25 tests passed`
+- 2026-10-15T17:49:38Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6198591276)
+  - `[handoff] builder-web -> reviewer | issue #6 | PR #41 | attempt 3 | phase retry | Applied code-fence stripping and distinct route errors; 78 tests pass and PR head is 02a505e.`
+- 2026-10-15T18:02:29Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6198833612)
+  - `[handoff] reviewer -> lead | issue #6 | PR #41 | attempt 1 | phase review | Merge conflicts detected; PR must be rebased onto main`
+- 2026-10-15T19:21:08Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6200394240)
+  - `[handoff] lead -> builder-web | issue #6 | PR #41 | attempt 2 | phase retry | Rebase PR #41 on main and resolve conflicts.`
+- 2026-10-15T19:27:24Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6200507388)
+  - `[handoff] builder-web -> architect | issue #6 | PR #41 | attempt 2 | phase retry | Conflicting PR head needs an integration path consistent with no-rewrite/no-merge and same-branch rules.`
+- 2026-10-15T20:52:25Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6202035693)
+  - `[handoff] builder-web -> reviewer | issue #6 | PR #41 | attempt 2 | phase retry | Merged latest main normally, fixed generation allowance/IP and distinct busy handling; pytest 79 passed. Head 914dd40.`
+- 2026-10-15T21:00:24Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/6#issuecomment-6202172351)
+  - `[handoff] reviewer -> tester | issue #6 | PR #41 | attempt 2 | phase review | Approved PR #41: ticket #6 save pages and gallery meets acceptance criteria and passes tests.`
+- 2026-10-15T22:40:37Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/41#issuecomment-6203757262)
+  - `[handoff] lead -> human | issue #6 | PR #41 | ready to merge`
+- 2026-10-16T00:40:33Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6205351656)
+  - `[handoff] lead -> builder-web | issue #2 | PR #0 | attempt 1 | phase planning | assigned to builder-web for work`
+- 2026-10-16T00:46:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6205424254)
+  - `[claim] builder-web picked up #2`
+- 2026-10-16T01:02:02Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6205621385)
+  - `[handoff] builder-web -> reviewer | issue #2 | PR #43 | attempt 1 | phase coding | Added form and no-call validation regression tests; full pytest 80 passed.`
+- 2026-10-16T01:17:51Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6205810220)
+  - `[handoff] reviewer -> tester | issue #2 | PR #43 | attempt 1 | phase review | Approved PR #43: adds tests for spec page UI validation and form controls; all criteria met.`
+- 2026-10-16T01:18:55Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/10#issuecomment-6205823640)
+  - `[handoff] lead -> builder-web | issue #10 | PR # | attempt 1 | phase planning | ready to hand off to builder-web`
+- 2026-10-16T01:26:05Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/10#issuecomment-6205910733)
+  - `[claim] builder-web picked up #10`
+- 2026-10-16T01:29:53Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/10#issuecomment-6205953827)
+  - `[handoff] builder-web -> reviewer | issue #10 | PR #44 | attempt 1 | phase coding | refine routes, immutable version lineage, retry safety, and shared allowance checks implemented and tested`
+- 2026-10-16T01:54:42Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/10#issuecomment-6206256005)
+  - `[handoff] reviewer -> tester | issue #10 | PR #44 | attempt 1 | phase review | Approved PR for refine pages with versions; all acceptance criteria met and tests pass.`
+- 2026-10-16T03:58:45Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6207754030)
+  - `[handoff] builder-web -> reviewer | issue #2 | PR #43 | attempt 2 | phase retry | Merged latest main, resolved both sides’ tests conflict, pytest 86 passed, pushed 720cef4.`
+- 2026-10-16T04:09:59Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6207878910)
+  - `[handoff] reviewer -> tester | issue #2 | PR #43 | attempt 2 | phase review | Added tests for spec page UI validation covering empty/overlong input and form controls.`
+- 2026-10-16T05:05:22Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/2#issuecomment-6208505595)
+  - `[handoff] tester -> lead | issue #2 | PR #43 | attempt 2 | phase test | Manual validation tests passed for spec page UI validation: empty/whitespace/overlong input rejected, valid spec generates and appears in gallery`
+- 2026-10-16T06:08:03Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/49#issuecomment-6209260917)
+  - `[handoff] lead -> builder-web | issue #49 | PR #0 | attempt 1 | phase planning | assigned to builder-web`
+- 2026-10-16T06:08:06Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/48#issuecomment-6209261590)
+  - `[handoff] lead -> builder-core | issue #48 | PR #0 | attempt 1 | phase planning | assigned to builder-core`
+- 2026-10-16T06:09:24Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/48#issuecomment-6209278861)
+  - `[claim] builder-core picked up #48`
+- 2026-10-16T06:12:16Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/48#issuecomment-6209316559)
+  - `[handoff] builder-core -> reviewer | issue #48 | PR #50 | attempt 1 | phase review | Configurable model timeout and HTTP 503 fallback implemented; full pytest passed.`
+- 2026-10-16T06:15:45Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/48#issuecomment-6209363990)
+  - `[handoff] lead -> builder-core | issue #48 | PR #50 | attempt 1 | phase coding | reassigned to builder-core for rework`
+- 2026-10-16T06:17:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/47#issuecomment-6209384534)
+  - `[handoff] lead -> builder-web | issue #47 | PR #37 | attempt 1 | phase coding | Add health check, DB password, checkout owner variables to deploy script`
+- 2026-10-16T06:19:51Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/48#issuecomment-6209418399)
+  - `[handoff] builder-core -> reviewer | issue #48 | PR #50 | attempt 2 | phase retry | Added explicit assertions confirming one primary and one fallback request for HTTP 503; full pytest passed (92 tests).`
+- 2026-10-16T06:22:12Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/48#issuecomment-6209450949)
+  - `[handoff] reviewer -> tester | issue #48 | PR #50 | attempt 1 | phase review | Approved PR #50: configurable model timeout and HTTP 503 fallback.`
+- 2026-10-16T13:52:16Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/49#issuecomment-6216992400)
+  - `[claim] builder-web picked up #49`
+- 2026-10-16T13:55:17Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/49#issuecomment-6217055083)
+  - `[handoff] builder-web -> reviewer | issue #49 | PR #53 | attempt 1 | phase coding | fixed chain-wide version allocation; real DATABASE_URL_TEST flow verifies v1/v2/v3/v4 and immutable v1`
+- 2026-10-16T13:56:27Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/47#issuecomment-6217077032)
+  - `[claim] builder-web picked up #47`
+- 2026-10-16T13:59:46Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/49#issuecomment-6217137043)
+  - `[handoff] reviewer -> tester | issue #49 | PR #53 | attempt 1 | phase review | Fixed version numbering in refine chain, added test, updated gallery to show refine instruction once.`
+- 2026-10-16T14:03:38Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/47#issuecomment-6217207837)
+  - `[handoff] builder-web -> reviewer | issue #47 | PR #54 | attempt 1 | phase coding | Deploy health check, database password, Caddy config, and owner-safe auto-deploy fixes are implemented and tested.`
+- 2026-10-16T14:09:56Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/47#issuecomment-6217326455)
+  - `[handoff] reviewer -> tester | issue #47 | PR #54 | attempt 1 | phase review | All deployment gaps addressed: health check, DB password, Caddy pin, auto-deploy ownership, tests updated`
+- 2026-10-16T15:05:35Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/51#issuecomment-6218392850)
+  - `[claim] builder-core picked up #51`
+- 2026-10-16T15:08:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/51#issuecomment-6218444050)
+  - `[handoff] builder-core -> reviewer | issue #51 | PR #56 | attempt 1 | phase coding | Shared validator rules now used by generate and refine; pytest passed.`
+- 2026-10-16T15:18:58Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/47#issuecomment-6218650030)
+  - `[handoff] tester -> lead | issue #47 | PR #54 | attempt 1 | phase test | All acceptance criteria satisfied`
+- 2026-10-16T15:26:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/pull/56#issuecomment-6218798395)
+  - `[handoff] reviewer -> lead | issue #51 | PR #56 | attempt 1 | phase review | Requested changes to limit PR scope to ticket requirements`
+- 2026-10-16T15:32:25Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/51#issuecomment-6218912086)
+  - `[handoff] reviewer -> tester | issue #51 | PR #56 | attempt 1 | phase review | Approved PR #56 for issue #51: generator prompt now states validator rules`
+- 2026-10-16T15:42:14Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/49#issuecomment-6219091613)
+  - `[handoff] tester -> lead | issue #49 | PR #53 | attempt 1 | phase test | Testing version chain fix for refining same page twice`
+- 2026-10-16T15:43:19Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/49#issuecomment-6219113492)
+  - `[handoff] lead -> human | issue #49 | PR #53 | ready to merge`
+- 2026-10-16T15:58:02Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/51#issuecomment-6219390371)
+  - `[handoff] tester -> lead | issue #51 | PR #56 | attempt 1 | phase test | Tested PR #56: generator now includes validator rules in system prompt, all tests pass.`
+- 2026-10-16T16:12:13Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/58#issuecomment-6219658964)
+  - `[handoff] lead -> builder-core | issue #58 | PR #none | attempt 1 | phase planning | Validator fails <p> inside article`
+- 2026-10-16T16:13:31Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/58#issuecomment-6219686222)
+  - `[claim] builder-core picked up #58`
+- 2026-10-16T16:15:53Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/58#issuecomment-6219736974)
+  - `[handoff] builder-core -> reviewer | issue #58 | PR #59 | attempt 1 | phase review | Corrected implied-close lookup and added validator regressions.`
+- 2026-10-16T16:17:42Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/58#issuecomment-6219778140)
+  - `[handoff] reviewer -> tester | issue #58 | PR #59 | attempt 1 | phase review | Approved PR #59: fixes implied closing tag handling for <p> inside section/div/article, adds relevant tests, all existing tests pass.`
+- 2026-10-16T16:22:45Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/58#issuecomment-6219873737)
+  - `[handoff] tester -> lead | issue #58 | PR #59 | attempt 1 | phase test | Validator now accepts <p> inside section/div/article and mismatched tags still caught`
+- 2026-10-16T16:23:35Z · [vyom-agents](https://github.com/vyomya/agent-studio/issues/58#issuecomment-6219889567)
+  - `[handoff] lead -> human | issue #58 | PR #59 | attempt 1 | ready to merge`
