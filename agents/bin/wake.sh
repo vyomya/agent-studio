@@ -155,13 +155,79 @@ merge_ready() {
   done
 }
 
-# PR-level contradictions (pure code): both verdicts at once, or merge conflicts with main.
+# PR-level contradictions (pure code). Owner and status labels live on the ticket, never on the PR,
+# so every line names the ticket and gives the exact command (the lead once labeled PR #41 instead of #6).
 pr_problems() {
-  gh pr list --state open --limit 50 --json number,labels,mergeable --jq '
-    .[] | ([.labels[].name]) as $l |
-    (if ($l | index("review:approved")) and ($l | index("review:changes-requested")) then "- PR #\(.number): has both review:approved and review:changes-requested (the later verdict must replace the earlier)" else empty end),
-    (if ($l | index("test:passed")) and ($l | index("test:failed")) then "- PR #\(.number): has both test:passed and test:failed" else empty end),
-    (if .mergeable == "CONFLICTING" then "- PR #\(.number): has merge conflicts with main (send its ticket back to its builder to rebase)" else empty end)'
+  local pr t mergeable labels own tl b rm_args
+  gh pr list --state open --limit 50 --json number,labels,mergeable,body --jq '
+    .[] | "\(.number)\t\(((.body // "") | capture("(?i)closes #(?<n>[0-9]+)").n?) // "-")\t\(.mergeable)\t\([.labels[].name] | join(","))"' |
+  while IFS=$'\t' read -r pr t mergeable labels; do
+    own="$(tr ',' '\n' <<<"$labels" | grep -E '^(agent|status|area):' | sed 's/^/--remove-label /' | tr '\n' ' ' || true)"
+    if [ -n "$own" ]; then echo "- PR #$pr carries ticket labels; run exactly: gh pr edit $pr ${own% }"; fi
+    if [[ ",$labels," == *",review:approved,"* && ",$labels," == *",review:changes-requested,"* ]]; then
+      echo "- PR #$pr: has both review:approved and review:changes-requested (the later verdict must replace the earlier)"; fi
+    if [[ ",$labels," == *",test:passed,"* && ",$labels," == *",test:failed,"* ]]; then
+      echo "- PR #$pr: has both test:passed and test:failed"; fi
+    [ "$mergeable" = CONFLICTING ] || continue
+    if [ "$t" = "-" ]; then
+      echo "- PR #$pr: merge conflicts with main and no 'Closes #<n>' line; comment on the PR asking its builder to merge main"; continue; fi
+    tl="$(gh issue view "$t" --json labels,state -q 'select(.state == "OPEN") | [.labels[].name] | join(",")')"
+    [ -n "$tl" ] || continue
+    case ",$tl," in *",area:core,"*) b=builder-core ;; *) b=builder-web ;; esac
+    if [[ ",$tl," == *",agent:$b,"* && ( ",$tl," == *",status:changes-requested,"* || ",$tl," == *",status:in-progress,"* ) ]]; then continue; fi
+    rm_args="$(tr ',' '\n' <<<"$tl" | grep -E '^(agent|status):' | sed 's/^/--remove-label /' | tr '\n' ' ' || true)"
+    echo "- PR #$pr (ticket #$t): merge conflicts with main; run exactly: gh issue edit $t ${rm_args}--add-label agent:$b --add-label status:changes-requested"
+    echo "  then: gh pr comment $pr --body \"[board-fix] PR #$pr conflicts with main: merge main into this branch, keep both sides' behaviour, run the full pytest, push.\""
+  done
+  return 0
+}
+
+# The tester takes ONE ticket per run: the one with the fewest runs that ended without a verdict, then the lowest
+# number. A ticket the tester keeps failing on can no longer starve the others in the queue.
+tester_pick() {
+  local line n
+  issues_for | while read -r line; do
+    n="$(grep -oE '#[0-9]+' <<<"$line" | head -1)"; n="${n#\#}"
+    printf '%s\t%s\t%s\n' "$(cat "$STATE/tester-noverdict-$n" 2>/dev/null || echo 0)" "$n" "$line"
+  done | sort -t$'\t' -k1,1n -k2,2n | head -1 | cut -f3-
+}
+
+# Test facts (pure code, before the model starts): the slow, deterministic part of testing done once per run.
+# Fresh worktree at the PR head, a venv reused across runs (reinstalled only when app/requirements.txt changes),
+# the full pytest, and bash -n on the deploy scripts. The tester model then spends its run on manual checks.
+test_facts() {  # $1 = issue number
+  local n="$1" pr dir venv req h out rc sha syn
+  pr="$(gh pr list --state open --limit 50 --json number,body \
+        --jq ".[] | select((.body // \"\") | test(\"(?i)closes #$n([^0-9]|$)\")) | .number" | head -1)"
+  [ -n "$pr" ] || { echo "TEST FACTS: no open PR says 'Closes #$n'."; return 0; }
+  dir="$ROOT/work/tester-pr"; venv="$ROOT/venvs/tester"
+  git -C "$WS" fetch -q origin "+refs/pull/$pr/head:refs/remotes/pr/$pr" 2>/dev/null \
+    || { echo "TEST FACTS: git fetch of PR #$pr failed; test it yourself."; return 0; }
+  git -C "$WS" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
+  git -C "$WS" worktree prune
+  git -C "$WS" worktree add -f --detach "$dir" "refs/remotes/pr/$pr" >/dev/null 2>&1 \
+    || { echo "TEST FACTS: could not create a worktree for PR #$pr; test it yourself."; return 0; }
+  sha="$(git -C "$dir" rev-parse --short HEAD)"
+  req="$dir/app/requirements.txt"
+  h="$(sha256sum < "$req" 2>/dev/null | cut -c1-16)"
+  if [ ! -x "$venv/bin/python" ] || [ "$h" != "$(cat "$STATE/tester-venv.hash" 2>/dev/null)" ]; then
+    { [ -x "$venv/bin/python" ] || python3 -m venv "$venv"; } \
+      && "$venv/bin/pip" install -q -r "$req" pytest httpx >/dev/null 2>&1 \
+      && echo "$h" > "$STATE/tester-venv.hash" || echo "warn: pip install into $venv failed"
+  fi
+  if out="$(cd "$dir" && timeout 600 "$venv/bin/python" -m pytest -q -rfE -p no:cacheprovider -W ignore::DeprecationWarning 2>&1)"; then rc=0; else rc=$?; fi
+  syn="ok"
+  for f in "$dir"/deploy/*.sh; do [ -f "$f" ] && { bash -n "$f" 2>/dev/null || syn="FAILED for ${f#$dir/}"; }; done
+  echo "TEST FACTS (computed by wake.sh before you started; PR #$pr at $sha):"
+  echo "- Fresh worktree at the PR head: $dir"
+  echo "- Python with the PR's requirements installed: $venv/bin/python"
+  echo "- DATABASE_URL_TEST is $([ -n "${DATABASE_URL_TEST:-}" ] && echo set || echo NOT set)"
+  echo "- Full pytest (exit $rc): $(tail -1 <<<"$out")"
+  grep -E '^(FAILED|ERROR) ' <<<"$out" | head -10 | sed 's/^/    /' || true
+  echo "- bash -n deploy/*.sh: $syn"
+  echo "Do not recreate the worktree, reinstall, or rerun the full suite. Quote the pytest line above as evidence."
+  echo "If pytest failed (exit not 0), the verdict is test:failed. Otherwise spend this run on the manual checks in"
+  echo "your role, run from $dir with $venv/bin/python, then post the verdict."
 }
 
 PENDING=""; PHASE=""; TICKET=""
@@ -224,7 +290,14 @@ case "$AGENT" in
     fi
     ;;
   reviewer) PENDING="$(issues_for)"; PHASE="review" ;;
-  tester)   PENDING="$(issues_for)"; PHASE="test" ;;
+  tester)
+    PENDING="$(tester_pick)"; PHASE="test"
+    if [ -n "$PENDING" ] && [ "$DRY" != "--dry-run" ]; then
+      t="$(grep -oE '#[0-9]+' <<<"$PENDING" | head -1)"
+      log "test-facts: preparing worktree and running pytest for ${t}"
+      PENDING+=$'\n\n'"$(test_facts "${t#\#}")"
+    fi
+    ;;
   *) echo "no pre-check defined for $AGENT" >&2; exit 2 ;;
 esac
 
@@ -383,6 +456,23 @@ if [[ "$AGENT" == builder-* ]] && [ -n "${TICKET:-}" ]; then
       echo "$h" > "$STATE/delivery-$AGENT.hash"
       gh issue comment "${TICKET#\#}" --body "[delivery-check | wake.sh | no model] after the $AGENT run ($TS): $st. A ticket is delivered only with an open PR and no committed build artifacts (.venv, __pycache__, *.pyc). The next wake-up resumes from this state." >/dev/null || true
     fi
+  fi
+fi
+
+# 9. verdict check (code, not a model): a tester run that leaves the ticket with the tester did nothing visible
+#    (no test:* verdict, no handoff). Count those runs; on the 2nd in a row, say so on the ticket for a human.
+if [ "$AGENT" = tester ] && [ -n "${TICKET:-}" ]; then
+  n="${TICKET#\#}"
+  owner="$(gh issue view "$n" --json labels -q '[.labels[].name | select(startswith("agent:"))] | join(",")' 2>/dev/null || true)"
+  if [ "$owner" = "agent:tester" ]; then
+    c="$(( $(cat "$STATE/tester-noverdict-$n" 2>/dev/null || echo 0) + 1 ))"
+    echo "$c" > "$STATE/tester-noverdict-$n"
+    log "verdict-check: #$n still with the tester after this run (no verdict, $c in a row)"
+    if [ "$c" -eq 2 ]; then
+      gh issue comment "$n" --body "[verdict-check | wake.sh | no model] the tester ($MODEL) finished $c runs in a row on #$n without a verdict (no test:passed or test:failed on the PR, ticket not handed on). Run logs: $LOGDIR. A human should look." >/dev/null || true
+    fi
+  else
+    rm -f "$STATE/tester-noverdict-$n"
   fi
 fi
 
