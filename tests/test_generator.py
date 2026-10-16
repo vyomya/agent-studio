@@ -208,3 +208,43 @@ def test_retry_prompt_includes_previous_html_and_validation_errors():
     prompt = messages[1]["content"]
     assert "<html>broken</html>" in prompt
     assert "Missing or empty <title> element." in prompt
+
+
+def test_generate_and_refine_system_prompt_lists_validator_rules(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    generator = Generator()
+    captured_messages = []
+
+    def capture(messages):
+        captured_messages.append(messages)
+        return "<html>mock result</html>"
+
+    monkeypatch.setattr(generator, "_request", capture)
+    generator.generate("a pricing page")
+    generator.refine("<html>existing page</html>", "make it dark")
+
+    system_prompts = [messages[0]["content"] for messages in captured_messages]
+    assert len(system_prompts) == 2
+    assert system_prompts[0] == system_prompts[1]
+    prompt = system_prompts[0].lower()
+    for phrase in (
+        "parses as html",
+        "non-empty <title>",
+        "exactly one <h1>",
+        "three <section>",
+        "100 kb",
+        "<script>",
+        "inline event handlers",
+        "javascript: urls",
+        "external resources",
+        "src/srcset",
+        "<link>",
+        "css url(...)",
+        "@import",
+        "<iframe>",
+        "<object>",
+        "<embed>",
+        "meta refresh",
+        "return only the html document, no markdown fences",
+    ):
+        assert phrase in prompt
