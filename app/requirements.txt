@@ -2,3 +2,5 @@ fastapi
 uvicorn
 requests
 psycopg[binary]
+Jinja2
+python-multipart

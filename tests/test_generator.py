@@ -4,13 +4,11 @@ from __future__ import annotations
 import json
 import threading
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import Mock
 
 import pytest
 
-from app import limits
 from app.generator import Generator, GeneratorConfigError, GeneratorError, Provider
 
 
@@ -73,13 +71,12 @@ def clear_generator_environment(monkeypatch):
         "MOCK_RESPONSE_FALLBACK",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("app.generator.model_request_slot", lambda visitor_id: nullcontext())
 
 
 def test_openai_compatible_request_and_response(monkeypatch):
     with fake_openai_server({"primary-model": {"content": "<html>from primary</html>"}}) as (url, server):
         configure_real_provider(monkeypatch, url)
-        page = Generator().generate("a dog-walking pricing page", "soft pastel style", visitor_id="test-visitor")
+        page = Generator().generate("a dog-walking pricing page", "soft pastel style")
 
     assert page == "<html>from primary</html>"
     path, payload, authorization = server.requests_received[0]
@@ -99,7 +96,7 @@ def test_eligible_http_status_uses_fallback_once(monkeypatch, status):
         "fallback-model": {"content": "<html>fallback</html>"},
     }) as (url, server):
         configure_real_provider(monkeypatch, url)
-        assert Generator().generate("spec", visitor_id="test-visitor") == "<html>fallback</html>"
+        assert Generator().generate("spec") == "<html>fallback</html>"
 
     assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
 
@@ -111,7 +108,7 @@ def test_timeout_uses_fallback_once(monkeypatch):
         "fallback-model": {"content": "<html>fallback</html>"},
     }) as (url, server):
         configure_real_provider(monkeypatch, url)
-        assert Generator().generate("spec", visitor_id="test-visitor") == "<html>fallback</html>"
+        assert Generator().generate("spec") == "<html>fallback</html>"
 
     assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
 
@@ -123,7 +120,7 @@ def test_http_500_is_an_error_and_does_not_become_a_page(monkeypatch):
     }) as (url, server):
         configure_real_provider(monkeypatch, url)
         with pytest.raises(GeneratorError, match="busy"):
-            Generator().generate("spec", visitor_id="test-visitor")
+            Generator().generate("spec")
 
     assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model"]
 
@@ -135,7 +132,7 @@ def test_http_500_is_an_error_and_does_not_become_a_page(monkeypatch):
 def test_environment_selects_mock_provider_outcomes(monkeypatch, outcome, expected_fragment):
     monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
     monkeypatch.setenv("MOCK_RESPONSE", outcome)
-    page = Generator().generate("spec", visitor_id="test-visitor")
+    page = Generator().generate("spec")
     assert expected_fragment in page
 
 
@@ -143,7 +140,7 @@ def test_mock_429_retries_with_configured_fallback(monkeypatch):
     monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
     monkeypatch.setenv("MOCK_RESPONSE", "429")
     monkeypatch.setenv("MOCK_RESPONSE_FALLBACK", "valid")
-    assert "Mock page" in Generator().generate("spec", visitor_id="test-visitor")
+    assert "Mock page" in Generator().generate("spec")
 
 
 def test_both_mock_attempts_failing_show_friendly_error(monkeypatch):
@@ -151,57 +148,13 @@ def test_both_mock_attempts_failing_show_friendly_error(monkeypatch):
     monkeypatch.setenv("MOCK_RESPONSE", "429")
     monkeypatch.setenv("MOCK_RESPONSE_FALLBACK", "429")
     with pytest.raises(GeneratorError, match="busy"):
-        Generator().generate("spec", visitor_id="test-visitor")
+        Generator().generate("spec")
 
 
 def test_openai_provider_requires_primary_and_fallback_configuration(monkeypatch):
     monkeypatch.setenv("GENERATOR_PROVIDER", "openai")
     with pytest.raises(GeneratorConfigError):
         Generator()
-
-
-@pytest.mark.parametrize("operation", ["generate", "refine"])
-def test_limit_rejection_prevents_generation_and_refinement_model_calls(monkeypatch, operation):
-    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
-    generator = Generator()
-    primary_call = Mock()
-    fallback_call = Mock()
-    monkeypatch.setattr(generator.primary, "call", primary_call)
-    monkeypatch.setattr(generator.fallback, "call", fallback_call)
-
-    def reject_request(visitor_id):
-        assert visitor_id == "limited-visitor"
-        raise limits.LimitExceeded()
-
-    monkeypatch.setattr("app.generator.model_request_slot", reject_request)
-    with pytest.raises(limits.LimitExceeded) as caught:
-        if operation == "generate":
-            generator.generate("spec", visitor_id="limited-visitor")
-        else:
-            generator.refine("<html>saved page</html>", "make it dark", visitor_id="limited-visitor")
-
-    assert caught.value.status_code == 429
-    primary_call.assert_not_called()
-    fallback_call.assert_not_called()
-
-
-def test_generation_and_refinement_enter_the_same_request_slot(monkeypatch):
-    from contextlib import contextmanager
-
-    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
-    entered = []
-
-    @contextmanager
-    def record_slot(visitor_id):
-        entered.append(visitor_id)
-        yield
-
-    monkeypatch.setattr("app.generator.model_request_slot", record_slot)
-    generator = Generator()
-    generator.generate("new page", visitor_id="same-visitor")
-    generator.refine("<html>saved page</html>", "make it dark", visitor_id="same-visitor")
-
-    assert entered == ["same-visitor", "same-visitor"]
 
 
 def test_retry_prompt_includes_previous_html_and_validation_errors():

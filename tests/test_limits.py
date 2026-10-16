@@ -141,7 +141,7 @@ def test_real_database_daily_limit_spans_six_hour_windows(monkeypatch):
         pytest.skip("DATABASE_URL_TEST is not configured")
 
     visitor_id = f"daily-limit-integration-{uuid4()}"
-    start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    start = datetime(2026, 1, 5, 6, tzinfo=timezone.utc)
     day = start.date()
     global_day_window = datetime.combine(day, time.min)
 
@@ -255,12 +255,12 @@ def test_model_request_slot_rejects_concurrent_request_before_limits_or_model(mo
 
     with limits.model_request_slot("192.0.2.11"):
         model_call()
-        with pytest.raises(limits.LimitExceeded) as caught:
+        with pytest.raises(limits.ModelBusy) as caught:
             with limits.model_request_slot("192.0.2.12"):
                 model_call()
 
-    assert caught.value.status_code == 429
-    assert caught.value.detail == "Model allowance limit exceeded. Please try again later."
+    assert caught.value.status_code == 503
+    assert caught.value.detail == "The service is currently busy, please try again later."
     assert check_limits.call_args_list == [(("192.0.2.11",),)]
     model_call.assert_called_once_with()
     assert "pg_try_advisory_lock" in first_cursor.statements[0][0]

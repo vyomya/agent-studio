@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Studio Gallery</title>
+  <style>
+    body { font: 1rem/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }
+    form, article { border: 1px solid #bbb; border-radius: .5rem; margin: 1rem 0; padding: 1rem; }
+    label { display: block; margin: .5rem 0; }
+    input, textarea { box-sizing: border-box; width: 100%; }
+    iframe { border: 1px solid #aaa; height: 24rem; width: 100%; }
+    pre { overflow: auto; white-space: pre-wrap; }
+    .message { background: #fff3cd; padding: .75rem; }
+  </style>
+</head>
+<body>
+  <h1>Agent Studio</h1>
+  <form action="/generate" method="post">
+    <label>Describe your page (up to 500 characters)
+      <textarea name="spec" maxlength="500" required></textarea>
+    </label>
+    <label>Optional style example
+      <input type="text" name="style_example">
+    </label>
+    <button type="submit">Generate</button>
+  </form>
+  {% if message %}<p class="message" role="status">{{ message }}</p>{% endif %}
+  <h2>Gallery</h2>
+  {% for page in pages %}
+  <article>
+    <h3>{{ page.spec }} · v{{ page.version }}</h3>
+    <p>Created {{ page.created_at.isoformat() }} · {{ page.attempts }} attempt(s)</p>
+    {% if page.refine_instruction %}<p>Refine instruction: {{ page.refine_instruction }}</p>{% endif %}
+    <iframe title="Generated page for {{ page.spec }}" sandbox srcdoc="{{ page.html }}"></iframe>
+    <details><summary>View source</summary><pre>{{ page.html }}</pre></details>
+  </article>
+  {% else %}
+  <p>No pages have been saved yet.</p>
+  {% endfor %}
+</body>
+</html>
