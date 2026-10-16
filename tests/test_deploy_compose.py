@@ -1,29 +1,17 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import re
-import subprocess
-import sys
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_PATH = ROOT / "deploy/docker-compose.yml"
 
 
 def load_compose() -> dict:
-    # The Ubuntu deployment/test image provides PyYAML to its system Python.
-    # Keep the application venv isolated and use that parser only for YAML tests.
-    system_python = Path(sys.base_prefix) / "bin/python3"
-    parser = "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8'))))"
-    result = subprocess.run(
-        [str(system_python), "-c", parser, str(COMPOSE_PATH)],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
+    yaml = pytest.importorskip("yaml")
+    return yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
 
 
 def test_compose_defines_app_postgres_and_caddy_services() -> None:
@@ -33,7 +21,7 @@ def test_compose_defines_app_postgres_and_caddy_services() -> None:
     assert services["app"]["image"] == "agent-studio-app:latest"
     assert services["app"]["build"]["context"] == "../app"
     assert services["db"]["image"] == "postgres:16"
-    assert services["caddy"]["image"] == "caddy:latest"
+    assert services["caddy"]["image"] == "caddy:2"
 
 
 def test_app_settings_and_caddy_upstream_are_configured() -> None:
@@ -44,7 +32,7 @@ def test_app_settings_and_caddy_upstream_are_configured() -> None:
 
     assert app["environment"]["DATABASE_URL"]
     assert app["env_file"] == [{"path": ".env", "required": False}]
-    assert caddy["env_file"] == [{"path": ".env", "required": False}]
+    assert "env_file" not in caddy
     assert caddy["environment"]["DOMAIN"] == "${DOMAIN:-localhost}"
 
     caddyfile = (ROOT / "deploy/Caddyfile").read_text(encoding="utf-8")

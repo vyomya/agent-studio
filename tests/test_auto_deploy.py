@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import pwd
 import shutil
 import subprocess
+import tempfile
 
 import pytest
 
@@ -101,13 +103,64 @@ def test_auto_deploy_fast_forwards_and_restarts_only_when_main_advances(
 
 def test_auto_deploy_refuses_local_changes_without_restarting(tmp_path: Path) -> None:
     checkout, _ = _make_checkout(tmp_path)
-    (checkout / "local-change.txt").write_text("keep me\n", encoding="utf-8")
+    (checkout / "version.txt").write_text("keep me" + chr(10), encoding="utf-8")
 
     result = _run_worker(tmp_path, checkout)
 
     assert result.returncode != 0
     assert "local changes" in result.stderr
     assert not result.systemctl_log.exists()
+
+
+def test_auto_deploy_ignores_untracked_artifacts(tmp_path: Path) -> None:
+    checkout, _ = _make_checkout(tmp_path)
+    cache = checkout / "app" / "__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "stray.pyc").write_bytes(b"not a deploy change")
+
+    result = _run_worker(tmp_path, checkout)
+
+    assert result.returncode == 0, result.stderr
+    assert "already at origin/main" in result.stdout
+    assert not result.systemctl_log.exists()
+
+
+def test_auto_deploy_fast_forwards_checkout_owned_by_non_root() -> None:
+    if os.geteuid() != 0:
+        pytest.skip("chown-based deploy ownership test requires root")
+    try:
+        owner = pwd.getpwnam("nobody")
+    except KeyError:
+        pytest.skip("nobody user is unavailable")
+
+    with tempfile.TemporaryDirectory(prefix="agent-studio-auto-deploy-") as directory:
+        root = Path(directory)
+        root.chmod(0o755)
+        checkout, remote = _make_checkout(root)
+        upstream = root / "upstream"
+        subprocess.run(
+            ["git", "clone", "--branch", "main", str(remote), str(upstream)],
+            check=True,
+            capture_output=True,
+        )
+        _git("config", "user.name", "Test", cwd=upstream)
+        _git("config", "user.email", "test@example.invalid", cwd=upstream)
+        (upstream / "version.txt").write_text("owned update" + chr(10), encoding="utf-8")
+        _git("commit", "-am", "advance main", cwd=upstream)
+        _git("push", "origin", "main", cwd=upstream)
+        target = _git("rev-parse", "HEAD", cwd=upstream)
+
+        for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            os.chown(path, owner.pw_uid, owner.pw_gid)
+        os.chown(root, owner.pw_uid, owner.pw_gid)
+
+        result = _run_worker(root, checkout)
+        assert result.returncode == 0, result.stderr
+        assert _git("rev-parse", "HEAD", cwd=checkout) == target
+        assert (checkout / "version.txt").read_text(encoding="utf-8") == "owned update" + chr(10)
+        assert result.systemctl_log.read_text(encoding="utf-8").splitlines() == [
+            "restart agent-studio.service"
+        ]
 
 
 def test_installer_enables_five_minute_auto_deploy_timer() -> None:
