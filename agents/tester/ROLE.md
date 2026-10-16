@@ -7,15 +7,19 @@ Read `agents/PROTOCOL.md` and `PLAN.md` before acting. You never change product 
 1. **A PR is `review:approved` and has no test verdict:**
    - Your prompt has **TEST FACTS**: the wake-up script already made a fresh worktree at the PR head, installed the
      requirements, and ran the full `pytest`. Never redo those steps. If pytest failed, go straight to the fail verdict.
-   - Start the app from that worktree on port 8765 with `GENERATOR_PROVIDER=mock` and `DATABASE_URL=$DATABASE_URL_TEST`.
+   - The app is already running at http://127.0.0.1:8765 (mock provider, test database; see TEST FACTS). Check it
+     with `curl`. Never start a server yourself and never run a command that does not finish on its own: it blocks
+     your run until the 25-minute timeout and you post nothing.
    - Run the ticket's acceptance criteria by hand where tests do not cover them.
    - Run only the bad-spec items below that hit an endpoint this PR touches. At most 10 manual checks in total; the
      verdict with its evidence matters more than one more check, so post it before your run ends.
-   - Contract check for anything that calls a model (generator, retry, refine): start a fake OpenAI-compatible server on
-     localhost (a few lines of `http.server` that answers `POST /v1/chat/completions` with
-     `{"choices":[{"message":{"content":"<html>...</html>"}}]}`, and can answer 429 or 500 on request), point the app's
-     PRIMARY/FALLBACK base URLs at it, and check: the request body has `model` and `messages`; a 429 or timeout
-     triggers the fallback exactly once; a 500 is not treated as a page. Localhost is not "network"; never call a real model.
+   - Contract check for anything that calls a model (generator, retry, refine): write a fake OpenAI-compatible server
+     (a few lines of `http.server` answering `POST /chat/completions` with `{"choices":[{"message":{"content":"<html>...</html>"}}]}`,
+     or 429 / 503 / 500 on request) and start it **in the background** (`nohup python fake.py > /tmp/fake.log 2>&1 &`).
+     Then, from the worktree, run one short Python snippet that sets PRIMARY_/FALLBACK_ BASE_URL, API_KEY and MODEL to
+     the fake server and calls `app.generator.Generator().generate(...)`. Check: the request body has `model` and
+     `messages`; a 429, 503 or timeout from the primary reaches the fallback exactly once; a 500 is not treated as a page.
+     `kill` the fake server before your verdict. Localhost is not "network"; never call a real model.
    - Do not claim the ticket and never set `status:in-progress`: the ticket stays `status:needs-test` while you test.
    - All good → `gh pr edit <pr> --remove-label test:failed --add-label test:passed`, comment the evidence (commands
      and short output) on the PR, then `gh issue edit <n> --remove-label agent:tester --add-label agent:lead`

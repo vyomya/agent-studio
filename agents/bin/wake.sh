@@ -192,6 +192,12 @@ tester_pick() {
   done | sort -t$'\t' -k1,1n -k2,2n | head -1 | cut -f3-
 }
 
+stop_test_app() {  # the tester's background app from test_facts, if any
+  local pid; pid="$(cat "$STATE/tester-app.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -- "-$pid" 2>/dev/null; [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  rm -f "$STATE/tester-app.pid"; return 0
+}
+
 # Test facts (pure code, before the model starts): the slow, deterministic part of testing done once per run.
 # Fresh worktree at the PR head, a venv reused across runs (reinstalled only when app/requirements.txt changes),
 # the full pytest, and bash -n on the deploy scripts. The tester model then spends its run on manual checks.
@@ -218,6 +224,24 @@ test_facts() {  # $1 = issue number
   if out="$(cd "$dir" && timeout 600 "$venv/bin/python" -m pytest -q -rfE -p no:cacheprovider -W ignore::DeprecationWarning 2>&1)"; then rc=0; else rc=$?; fi
   syn="ok"
   for f in "$dir"/deploy/*.sh; do [ -f "$f" ] && { bash -n "$f" 2>/dev/null || syn="FAILED for ${f#$dir/}"; }; done
+  # Start the app for the manual checks here, in the background, so the model never runs a server itself
+  # (a server started in the foreground blocks the model's tool call until the 25-minute timeout).
+  stop_test_app
+  local app="not started (pytest failed)" i
+  if [ "$rc" -eq 0 ]; then
+    # All output goes to a file and the subshell execs the server, so nothing holds this function's stdout open.
+    ( cd "$dir" && exec env GENERATOR_PROVIDER=mock DATABASE_URL="${DATABASE_URL_TEST:-}" \
+        setsid "$venv/bin/python" -m uvicorn app.main:app --host 127.0.0.1 --port 8765 ) \
+      </dev/null >"$LOGDIR/$TS.app.log" 2>&1 &
+    echo $! > "$STATE/tester-app.pid"
+    app="FAILED to start (see $LOGDIR/$TS.app.log)"
+    for i in $(seq 1 20); do
+      if curl -fsS -o /dev/null http://127.0.0.1:8765/health 2>/dev/null; then
+        app="running at http://127.0.0.1:8765 (mock provider, test database, log $LOGDIR/$TS.app.log)"; break
+      fi
+      sleep 1
+    done
+  fi
   echo "TEST FACTS (computed by wake.sh before you started; PR #$pr at $sha):"
   echo "- Fresh worktree at the PR head: $dir"
   echo "- Python with the PR's requirements installed: $venv/bin/python"
@@ -225,6 +249,8 @@ test_facts() {  # $1 = issue number
   echo "- Full pytest (exit $rc): $(tail -1 <<<"$out")"
   grep -E '^(FAILED|ERROR) ' <<<"$out" | head -10 | sed 's/^/    /' || true
   echo "- bash -n deploy/*.sh: $syn"
+  echo "- App for manual checks: $app. wake.sh stops it when your run ends."
+  echo "  Use curl against it. Never start a server or any command that does not finish on its own."
   echo "Do not recreate the worktree, reinstall, or rerun the full suite. Quote the pytest line above as evidence."
   echo "If pytest failed (exit not 0), the verdict is test:failed. Otherwise spend this run on the manual checks in"
   echo "your role, run from $dir with $venv/bin/python, then post the verdict."
@@ -296,6 +322,7 @@ case "$AGENT" in
       t="$(grep -oE '#[0-9]+' <<<"$PENDING" | head -1)"
       log "test-facts: preparing worktree and running pytest for ${t}"
       PENDING+=$'\n\n'"$(test_facts "${t#\#}")"
+      trap stop_test_app EXIT
     fi
     ;;
   *) echo "no pre-check defined for $AGENT" >&2; exit 2 ;;
