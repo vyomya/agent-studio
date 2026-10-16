@@ -29,6 +29,7 @@ export GH_REPO="$REPO"
 key="${AGENT//-/_}"
 cfg() { local v="AGENT_${key}_$1"; printf '%s' "${!v:-}"; }
 RUNTIME="$(cfg RUNTIME)"; MODEL="$(cfg MODEL)"; PROVIDER="$(cfg PROVIDER)"; FALLBACK="$(cfg FALLBACK)"
+_to="$(cfg TIMEOUT_MIN)"; RUN_TIMEOUT_MIN="${_to:-${RUN_TIMEOUT_MIN:-25}}"   # per-agent override, e.g. AGENT_tester_TIMEOUT_MIN
 [ -n "$RUNTIME" ] || { echo "unknown agent: $AGENT" >&2; exit 2; }
 
 WS="$ROOT/work/$AGENT"
@@ -198,6 +199,33 @@ stop_test_app() {  # the tester's background app from test_facts, if any
   rm -f "$STATE/tester-app.pid"; return 0
 }
 
+# Smoke checks (pure code): the product's core flow against the tester's app, every request capped at 10 seconds.
+# Limits are raised in the test app (the limits have their own tests), and each check uses its own client address.
+smoke_checks() {  # $1 = base URL
+  local b="$1" body id spec
+  _c() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" 2>/dev/null || echo 000; }
+  _chk() { if [ "$2" = "$3" ]; then echo "    PASS  $1 (HTTP $3)"; else echo "    FAIL  $1: expected HTTP $2, got $3"; fi; }
+  _chk "GET /health" 200 "$(_c "$b/health")"
+  _chk "GET / gallery" 200 "$(_c "$b/")"
+  _chk "empty spec rejected" 400 "$(_c -X POST -H 'X-Forwarded-For: 10.9.0.1' --data-urlencode 'spec=' "$b/generate")"
+  _chk "501-character spec rejected" 400 "$(_c -X POST -H 'X-Forwarded-For: 10.9.0.2' --data-urlencode "spec=$(printf 'x%.0s' $(seq 1 501))" "$b/generate")"
+  spec="smoke check $(date +%s) bakery landing page"
+  _chk "valid spec generates, then redirects to the gallery" 303 "$(_c -X POST -H 'X-Forwarded-For: 10.9.0.3' --data-urlencode "spec=$spec" "$b/generate")"
+  body="$(curl -s --max-time 10 "$b/" 2>/dev/null || true)"
+  if grep -qF "$spec" <<<"$body"; then echo "    PASS  the new page is in the gallery"; else echo "    FAIL  the new page is not in the gallery"; fi
+  if grep -qiE '<iframe[^>]* sandbox' <<<"$body" && ! grep -qiE 'sandbox="[^"]*allow-(scripts|same-origin)' <<<"$body"; then
+    echo "    PASS  gallery iframes are sandboxed (no allow-scripts, no allow-same-origin)"
+  else echo "    FAIL  gallery iframe sandbox missing or too open"; fi
+  id="$(grep -oE '/pages/[0-9]+/refine' <<<"$body" | head -1 | grep -oE '[0-9]+' || true)"
+  if [ -n "$id" ]; then
+    _chk "refine with 201 characters rejected" 400 "$(_c -X POST -H 'X-Forwarded-For: 10.9.0.4' --data-urlencode "instruction=$(printf 'x%.0s' $(seq 1 201))" "$b/pages/$id/refine")"
+    _chk "refine 'make it dark mode' saves a version, then redirects" 303 "$(_c -X POST -H 'X-Forwarded-For: 10.9.0.5' --data-urlencode 'instruction=make it dark mode' "$b/pages/$id/refine")"
+  else
+    echo "    SKIP  refine checks (no refine form in the gallery)"
+  fi
+  return 0
+}
+
 # Test facts (pure code, before the model starts): the slow, deterministic part of testing done once per run.
 # Fresh worktree at the PR head, a venv reused across runs (reinstalled only when app/requirements.txt changes),
 # the full pytest, and bash -n on the deploy scripts. The tester model then spends its run on manual checks.
@@ -231,6 +259,7 @@ test_facts() {  # $1 = issue number
   if [ "$rc" -eq 0 ]; then
     # All output goes to a file and the subshell execs the server, so nothing holds this function's stdout open.
     ( cd "$dir" && exec env GENERATOR_PROVIDER=mock DATABASE_URL="${DATABASE_URL_TEST:-}" \
+        MODEL_LIMIT_PER_HOUR=100000 MODEL_LIMIT_PER_DAY=100000 GLOBAL_MODEL_DAILY_LIMIT=100000 \
         setsid "$venv/bin/python" -m uvicorn app.main:app --host 127.0.0.1 --port 8765 ) \
       </dev/null >"$LOGDIR/$TS.app.log" 2>&1 &
     echo $! > "$STATE/tester-app.pid"
@@ -250,10 +279,12 @@ test_facts() {  # $1 = issue number
   grep -E '^(FAILED|ERROR) ' <<<"$out" | head -10 | sed 's/^/    /' || true
   echo "- bash -n deploy/*.sh: $syn"
   echo "- App for manual checks: $app. wake.sh stops it when your run ends."
-  echo "  Use curl against it. Never start a server or any command that does not finish on its own."
-  echo "Do not recreate the worktree, reinstall, or rerun the full suite. Quote the pytest line above as evidence."
-  echo "If pytest failed (exit not 0), the verdict is test:failed. Otherwise spend this run on the manual checks in"
-  echo "your role, run from $dir with $venv/bin/python, then post the verdict."
+  if [[ "$app" == running* ]]; then
+    echo "- Smoke checks of the core flow (code, mock provider):"
+    smoke_checks "http://127.0.0.1:8765"
+  fi
+  echo "Do not recreate the worktree, reinstall, or rerun the full suite or these checks. Quote them as evidence."
+  echo "Any extra command: run it from $dir, wrap it in 'timeout 20', and only against http://127.0.0.1:8765."
 }
 
 PENDING=""; PHASE=""; TICKET=""
@@ -366,7 +397,17 @@ if [[ "$MODEL" == openai/* ]] && [ -n "${OPENAI_BUDGET_USD:-}" ]; then
   fi
 fi
 
-# 3. one call at a time per provider
+# 3a. one OpenClaw process at a time: all OpenClaw agents (builders, tester) share the agents user's ~/.openclaw data,
+#     and OpenClaw refuses a second process ("Another OpenClaw process is using your data"). Taken before the
+#     provider lock, always in this order, so two agents can never wait on each other.
+if [ "$RUNTIME" = openclaw ]; then
+  exec 6>"$ROOT/run/openclaw.lock"
+  if ! flock -w "$PROVIDER_WAIT_SEC" 6; then
+    log "skip: another OpenClaw agent busy for ${PROVIDER_WAIT_SEC}s"; exit 0
+  fi
+fi
+
+# 3b. one call at a time per provider
 exec 9>"$ROOT/run/provider-$PROVIDER.lock"
 if ! flock -w "$PROVIDER_WAIT_SEC" 9; then
   log "skip: provider $PROVIDER busy for ${PROVIDER_WAIT_SEC}s"; exit 0
