@@ -12,12 +12,12 @@ if __package__:  # Tests import app.main; the container runs main:app from /app.
     from .generator import Generator, GeneratorError
     from .limits import LimitExceeded, ModelBusy, model_request_slot
     from .retry import InvalidPageError, generate_valid_page
-    from .storage import get_page, initialize_database, list_pages, save_page
+    from .storage import get_page, initialize_database, list_pages, next_version_in_chain, save_page
 else:  # pragma: no cover - exercised by the container's /app working directory.
     from generator import Generator, GeneratorError
     from limits import LimitExceeded, ModelBusy, model_request_slot
     from retry import InvalidPageError, generate_valid_page
-    from storage import get_page, initialize_database, list_pages, save_page
+    from storage import get_page, initialize_database, list_pages, next_version_in_chain, save_page
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -106,15 +106,39 @@ def refine(
 
     try:
         with model_request_slot(_visitor_id(request)):
-            # Re-read after acquiring the shared model slot so each refinement
-            # uses the latest version number in the immutable version chain.
+            # Re-read the source after acquiring the shared model slot. The
+            # saver computes the chain-wide version only after validation,
+            # immediately before inserting the new immutable page.
             page = get_page(page_id)
             if page is None:
                 return _gallery(request, "The page to refine could not be found.", 404)
+
+            def save_refinement(
+                spec: str,
+                html: str,
+                attempts: int,
+                *,
+                parent_id: int,
+                version: int,
+                refine_instruction: str,
+            ):
+                # generate_valid_page requires a version hint, but the source
+                # page may be an old ancestor. Resolve the authoritative value
+                # from the whole chain at the actual save point instead.
+                del version
+                return save_page(
+                    spec,
+                    html,
+                    attempts,
+                    parent_id=parent_id,
+                    version=next_version_in_chain(parent_id),
+                    refine_instruction=refine_instruction,
+                )
+
             generate_valid_page(
                 page.spec,
                 Generator(),
-                save_page,
+                save_refinement,
                 source_html=page.html,
                 refine_instruction=instruction,
                 parent_id=page.id,

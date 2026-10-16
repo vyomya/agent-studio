@@ -33,6 +33,35 @@ def connect():
     return psycopg.connect(database_url(), row_factory=dict_row)
 
 
+def next_version_in_chain(page_id: int) -> int:
+    """Return one more than the highest version in this page's version chain."""
+    with connect() as connection:
+        row = connection.execute(
+            """
+            WITH RECURSIVE ancestors(id, parent_id) AS (
+                SELECT id, parent_id FROM pages WHERE id = %s
+                UNION ALL
+                SELECT parent.id, parent.parent_id
+                FROM pages AS parent
+                JOIN ancestors AS child ON child.parent_id = parent.id
+            ), root(id) AS (
+                SELECT id FROM ancestors WHERE parent_id IS NULL
+            ), descendants(id, version) AS (
+                SELECT page.id, page.version
+                FROM pages AS page JOIN root ON page.id = root.id
+                UNION ALL
+                SELECT child.id, child.version
+                FROM pages AS child
+                JOIN descendants AS parent ON child.parent_id = parent.id
+            )
+            SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+            FROM descendants
+            """,
+            (page_id,),
+        ).fetchone()
+    return row["next_version"]
+
+
 def initialize_database() -> None:
     """Create the gallery table if it does not yet exist."""
     with connect() as connection:
