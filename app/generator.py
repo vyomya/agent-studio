@@ -78,12 +78,24 @@ class MockProvider(Provider):
         super().__init__(base_url, api_key, model, name)
 
     def call(self, messages: list[dict[str, str]]) -> ProviderResponse:
-        outcome = os.getenv("MOCK_RESPONSE_FALLBACK") if self.name == "fallback" else None
-        outcome = outcome or os.getenv("MOCK_RESPONSE", "valid")
+        user_content = messages[-1]["content"] if messages else ""
+        is_refine = user_content.startswith("Refine this HTML page according to the instruction below.")
+        if is_refine:
+            outcome = os.getenv("MOCK_REFINE_RESPONSE_FALLBACK") if self.name == "fallback" else None
+            outcome = outcome or os.getenv("MOCK_REFINE_RESPONSE", "valid")
+        else:
+            outcome = os.getenv("MOCK_RESPONSE_FALLBACK") if self.name == "fallback" else None
+            outcome = outcome or os.getenv("MOCK_RESPONSE", "valid")
         outcome = outcome.strip().lower()
         if outcome == "429":
             return ProviderResponse(status_code=429, error="Mock rate limit")
         if outcome == "valid":
+            if is_refine:
+                instruction = user_content.split("Instruction:", 1)[1].split(" Existing HTML:", 1)[0].strip()
+                refined = _VALID_HTML.replace("Mock page", "Mock refined page")
+                if "dark" in instruction.lower():
+                    refined = refined.replace("<head>", "<head><style>body { background: #111; color: #eee; }</style>")
+                return ProviderResponse(status_code=200, content=refined)
             return ProviderResponse(status_code=200, content=_VALID_HTML)
         if outcome == "script":
             content = _VALID_HTML.replace("</body>", "<script>alert(1)</script></body>")
@@ -174,8 +186,27 @@ class Generator:
             return fallback.content
         raise GeneratorError(self.BUSY_MESSAGE)
 
-    def refine(self, page_html: str, instruction: str) -> str:
+    def refine(
+        self,
+        page_html: str,
+        instruction: str,
+        *,
+        previous_attempt: str | None = None,
+        validation_errors: list[str] | None = None,
+    ) -> str:
         """Refine a saved page through the same metered model request path."""
+        user_content = (
+            "Refine this HTML page according to the instruction below. "
+            f"Instruction: {instruction} Existing HTML: {page_html}"
+        )
+        if previous_attempt is not None:
+            user_content += (
+                "\n\nYour previous refined HTML attempt failed validation. Return a corrected, complete "
+                "self-contained HTML document.\nValidation errors:\n- "
+                + "\n- ".join(validation_errors or [])
+                + "\nPrevious HTML attempt:\n"
+                + previous_attempt
+            )
         messages = [
             {
                 "role": "system",
@@ -186,10 +217,7 @@ class Generator:
             },
             {
                 "role": "user",
-                "content": (
-                    "Refine this HTML page according to the instruction below. "
-                    f"Instruction: {instruction} Existing HTML: {page_html}"
-                ),
+                "content": user_content,
             },
         ]
         return self._request(messages)
