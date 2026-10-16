@@ -6,6 +6,7 @@ import threading
 import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import Mock
 
 import pytest
 
@@ -68,7 +69,7 @@ def clear_generator_environment(monkeypatch):
     for name in (
         "GENERATOR_PROVIDER", "PRIMARY_BASE_URL", "PRIMARY_API_KEY", "PRIMARY_MODEL",
         "FALLBACK_BASE_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL", "MOCK_RESPONSE",
-        "MOCK_RESPONSE_FALLBACK",
+        "MOCK_RESPONSE_FALLBACK", "MODEL_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -102,15 +103,51 @@ def test_eligible_http_status_uses_fallback_once(monkeypatch, status):
 
 
 def test_timeout_uses_fallback_once(monkeypatch):
-    monkeypatch.setattr(Provider, "timeout_seconds", 0.05)
     with fake_openai_server({
         "primary-model": {"delay": 0.2},
+        "fallback-model": {"content": "<html>fallback</html>"},
+    }) as (url, server):
+        configure_real_provider(monkeypatch, url)
+        generator = Generator()
+        monkeypatch.setattr(generator.primary, "timeout_seconds", 0.05)
+        assert generator.generate("spec") == "<html>fallback</html>"
+
+    assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
+
+
+def test_http_503_uses_fallback_once(monkeypatch):
+    with fake_openai_server({
+        "primary-model": {"status": 503},
         "fallback-model": {"content": "<html>fallback</html>"},
     }) as (url, server):
         configure_real_provider(monkeypatch, url)
         assert Generator().generate("spec") == "<html>fallback</html>"
 
     assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
+
+
+def _check_post_timeout(monkeypatch, setting, expected):
+    if setting is None:
+        monkeypatch.delenv("MODEL_TIMEOUT_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("MODEL_TIMEOUT_SECONDS", setting)
+    response = Mock(status_code=200)
+    response.json.return_value = {"choices": [{"message": {"content": "<html>page</html>"}}]}
+    post = Mock(return_value=response)
+    monkeypatch.setattr("app.generator.requests.post", post)
+
+    Provider("https://provider.test/v1", "test-key", "test-model").call([])
+
+    assert post.call_args.kwargs["timeout"] == expected
+
+
+@pytest.mark.parametrize("setting", [None, "not-a-number", "0", "-2"])
+def test_default_and_invalid_timeout_values_use_sixty_seconds(monkeypatch, setting):
+    _check_post_timeout(monkeypatch, setting, 60)
+
+
+def test_configured_timeout_reaches_requests_post(monkeypatch):
+    _check_post_timeout(monkeypatch, "23.5", 23.5)
 
 
 def test_http_500_is_an_error_and_does_not_become_a_page(monkeypatch):

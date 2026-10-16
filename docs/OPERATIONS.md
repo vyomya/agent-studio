@@ -20,6 +20,17 @@ This guide covers the product deployment managed by deploy/install.sh. Run its c
 
 The installer is safe to re-run: it checks required tools, updates systemd files only when they differ, validates Compose, and restarts the service. It also enables `agent-studio-auto-deploy.timer`, which checks `origin/main` two minutes after boot and every five minutes thereafter. The worker refuses to overwrite local changes or handle a non-fast-forward update; on a clean checkout, it fast-forwards `main` and restarts `agent-studio.service` only when the remote revision changed.
 
+## Product settings
+
+Configure the model provider through the app environment (in `.env` on the VM):
+
+- `GENERATOR_PROVIDER`: `openai` for configured endpoints, or `mock` for deterministic tests.
+- `PRIMARY_BASE_URL`, `PRIMARY_API_KEY`, and `PRIMARY_MODEL`: primary OpenAI-compatible endpoint settings.
+- `FALLBACK_BASE_URL`, `FALLBACK_API_KEY`, and `FALLBACK_MODEL`: fallback endpoint settings.
+- `MODEL_TIMEOUT_SECONDS`: request timeout in seconds; defaults to `60`. A non-number or a value below `1` also uses `60`.
+
+Restart the app after changing these settings.
+
 ## Start, stop, deploy, and logs
 
 The installer creates and enables agent-studio.service. Manage the Compose application through systemd:
