@@ -27,9 +27,14 @@ class ProviderResponse:
 class Provider:
     """Calls an OpenAI-compatible chat-completions endpoint."""
 
-    timeout_seconds = 10
+    timeout_seconds = 60
 
     def __init__(self, base_url: str, api_key: str, model: str, name: str = "primary") -> None:
+        try:
+            timeout_seconds = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
+        except (TypeError, ValueError):
+            timeout_seconds = 60
+        self.timeout_seconds = timeout_seconds if timeout_seconds >= 1 else 60
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
@@ -107,9 +112,9 @@ class MockProvider(Provider):
 
 
 class Generator:
-    """Generate HTML and retry once with fallback on 402, 429, or timeout."""
+    """Generate HTML and retry once with fallback on 402, 429, 503, or timeout."""
 
-    RETRY_STATUS = {402, 429, 0}
+    RETRY_STATUS = {402, 429, 503, 0}
     BUSY_MESSAGE = "The service is currently busy, please try again later."
 
     def __init__(self) -> None:
