@@ -93,8 +93,10 @@ class _TagCollector(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_low = tag.lower()
-        implied = _IMPLIED_CLOSES.get(tag_low, set())
-        while self.tag_stack and self.tag_stack[-1] in implied:
+        while (
+            self.tag_stack
+            and tag_low in _IMPLIED_CLOSES.get(self.tag_stack[-1], set())
+        ):
             self.tag_stack.pop()
         if tag_low not in _VOID_ELEMENTS:
             self.tag_stack.append(tag_low)

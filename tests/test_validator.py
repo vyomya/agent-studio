@@ -158,6 +158,30 @@ def test_valid_void_and_optional_end_tags_parse():
     assert validate_html(_make_html(body=body)) == []
 
 
+def test_paragraph_inside_section_is_valid():
+    body = "<section><p>text</p></section>" * 3
+    assert validate_html(_make_html(body=body)) == []
+
+
+def test_nested_elements_with_optional_list_item_closings_are_valid():
+    body = (
+        "<section><div><article><p>x</p><ul><li>a<li>b</ul>"
+        "</article></div></section>"
+    ) * 3
+    assert validate_html(_make_html(body=body)) == []
+
+
+def test_unclosed_paragraph_before_section_is_valid():
+    body = "<p>text<section>one</section><section>two</section><section>three</section>"
+    assert validate_html(_make_html(body=body)) == []
+
+
+def test_nonoptional_mismatched_closing_tags_still_fail():
+    body = "<section><div></section></div>"
+    errors = validate_html(_make_html(body=body))
+    assert any("mismatched closing tag" in error.lower() for error in errors)
+
+
 def test_external_resources_in_all_supported_attributes_rejected():
     body = (
         "<video src='https://cdn.example/movie.mp4'></video>"
