@@ -12,9 +12,9 @@ Read `agents/PROTOCOL.md` before acting.
      your next wake-up, which counts the rejections).
    - Two status labels: keep the later one in the flow ready → in-progress → needs-review → needs-test → ready-to-merge.
    - Area label and body disagree: make the label match the body.
-   - A PR has merge conflicts with main: send its ticket back to its builder with
-     `gh issue edit <n> --remove-label agent:lead --remove-label status:<current> --add-label agent:<builder> --add-label status:changes-requested`
-     and comment on the PR: "Rebase on main and resolve the conflicts, keep both sides' behaviour, run pytest, push."
+   - A PR has merge conflicts with main, or a PR carries `agent:`, `status:` or `area:` labels: run the exact
+     commands printed under BOARD PROBLEMS, unchanged. Owner and status labels belong on the ticket (the issue named
+     in the PR's `Closes #<n>` line), never on the PR. Never type a PR number into `gh issue edit`.
    - Status does not fit the owner: read the latest review, test or handoff comment on the ticket and its PR, and fix
      whichever label contradicts it. A rejection that left `status:needs-review` means the review said "changes
      requested": set `status:changes-requested` and keep yourself as owner, then apply REWORK ACTIONS next time.

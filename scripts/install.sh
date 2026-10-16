@@ -24,7 +24,7 @@ refresh_agents() {
   step "Installing agent rules, team config and wake-up script into $ROOT/agents"
   rm -rf "$ROOT/agents.new"; cp -r "$REPO_DIR/agents" "$ROOT/agents.new"
   rm -rf "$ROOT/agents"; mv "$ROOT/agents.new" "$ROOT/agents"
-  chmod +x "$ROOT/agents/bin/wake.sh"
+  chmod +x "$ROOT/agents/bin/"*.sh
   chown -R agents:agents "$ROOT/agents"
 }
 
@@ -92,7 +92,7 @@ for a in $AGENTS; do
   esac
 done
 
-step "OpenClaw: Ollama Cloud as an OpenAI-compatible provider (fallback for Gemini)"
+step "OpenClaw: Ollama Cloud as an OpenAI-compatible provider (tester model and fallbacks)"
 # The key is copied from .env into the agents user's own config file (mode 600), never into git.
 as_agents "set -a; . $ROOT/.env; set +a
   C=\$HOME/.openclaw/openclaw.json; cp \$C \$C.bak-ollama
@@ -101,8 +101,11 @@ as_agents "set -a; . $ROOT/.env; set +a
     | .models.providers[\"ollama-cloud\"] = {
         baseUrl: \"https://ollama.com/v1\", apiKey: \$key, api: \"openai-completions\",
         models: [{ id: \"gpt-oss:120b\", name: \"gpt-oss 120b (Ollama Cloud)\", reasoning: false, input: [\"text\"],
+                   cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 16000 },
+                 { id: \"nemotron-3-super\", name: \"nemotron-3-super (Ollama Cloud)\", reasoning: false, input: [\"text\"],
                    cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 16000 }] }
     | .agents.defaults.models[\"ollama-cloud/gpt-oss:120b\"] = {alias: \"gpt-oss-120b\"}
+    | .agents.defaults.models[\"ollama-cloud/nemotron-3-super\"] = {alias: \"nemotron-super\"}
   ' \$C.bak-ollama > \$C && chmod 600 \$C"
 
 step "Trimming OpenClaw's default workspace files (fewer prompt tokens, nothing personal, never committed)"
