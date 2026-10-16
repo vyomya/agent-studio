@@ -96,6 +96,17 @@ def test_generate_saves_valid_page_then_redirects_to_gallery(monkeypatch):
     assert storage.list_pages()[0].attempts == 1
 
 
+def test_spec_form_has_description_style_and_generate_controls():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<form action="/generate" method="post">' in response.text
+    assert 'name="spec" maxlength="500" required' in response.text
+    assert 'name="style_example"' in response.text
+    assert 'type="submit">Generate</button>' in response.text
+
+
 def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypatch):
     monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
     monkeypatch.setenv("MOCK_REFINE_RESPONSE", "valid")
@@ -252,7 +263,8 @@ def test_refinement_consumes_global_daily_allowance_before_model_call(monkeypatc
     assert len(storage.list_pages()) == 1
 
 
-def test_invalid_spec_is_rejected_without_saving():
+def test_invalid_spec_is_rejected_without_model_call_or_saving(monkeypatch):
+    calls = install_mock_responses(monkeypatch, [VALID_GENERATED_HTML])
     with TestClient(app) as client:
         empty = client.post("/generate", data={"spec": ""})
         too_long = client.post("/generate", data={"spec": "x" * 501})
@@ -261,6 +273,7 @@ def test_invalid_spec_is_rejected_without_saving():
     assert "Please enter" in empty.text
     assert too_long.status_code == 400
     assert "500 characters" in too_long.text
+    assert calls == []
     assert storage.list_pages() == []
 
 
