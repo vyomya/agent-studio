@@ -32,7 +32,7 @@ class GeneratedPage:
     saved_record: object
 
 
-SavePage = Callable[[str, str, int], object]
+SavePage = Callable[..., object]
 
 
 def _strip_markdown_fence(html: str) -> str:
@@ -48,26 +48,55 @@ def generate_valid_page(
     generator: Generator,
     save_page: SavePage,
     style_example: str | None = None,
+    *,
+    source_html: str | None = None,
+    refine_instruction: str | None = None,
+    parent_id: int | None = None,
+    version: int | None = None,
 ) -> GeneratedPage:
     """Try up to three times; save only after code validation succeeds.
 
     save_page receives (spec, html, attempts) so persistence can retain the
     original request and the successful attempt number.
     """
+    refining = source_html is not None
+    if refining and (not refine_instruction or parent_id is None or version is None):
+        raise ValueError("refinement requires an instruction, parent id, and version")
+    if not refining and any(value is not None for value in (refine_instruction, parent_id, version)):
+        raise ValueError("refinement metadata requires source_html")
+
     previous_attempt: str | None = None
     errors: list[str] = []
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        html = generator.generate(
-            spec,
-            style_example,
-            previous_attempt=previous_attempt,
-            validation_errors=errors,
-        )
+        if refining:
+            html = generator.refine(
+                source_html,
+                refine_instruction,
+                previous_attempt=previous_attempt,
+                validation_errors=errors,
+            )
+        else:
+            html = generator.generate(
+                spec,
+                style_example,
+                previous_attempt=previous_attempt,
+                validation_errors=errors,
+            )
         html = _strip_markdown_fence(html)
         errors = validate_html(html)
         if not errors:
-            saved_record = save_page(spec, html, attempt)
+            if refining:
+                saved_record = save_page(
+                    spec,
+                    html,
+                    attempt,
+                    parent_id=parent_id,
+                    version=version,
+                    refine_instruction=refine_instruction,
+                )
+            else:
+                saved_record = save_page(spec, html, attempt)
             return GeneratedPage(html=html, attempts=attempt, saved_record=saved_record)
         previous_attempt = html
 

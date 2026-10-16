@@ -5,16 +5,17 @@ Read `agents/PROTOCOL.md` and `PLAN.md` before acting. You never change product 
 
 ## On every wake-up, do the first item that applies
 1. **A PR is `review:approved` and has no test verdict:**
-   - Check out the PR branch in a fresh worktree, install, and run `pytest`.
-   - Start the app on a test port with the `mock` provider and a throwaway database.
+   - Your prompt has **TEST FACTS**: the wake-up script already made a fresh worktree at the PR head, installed the
+     requirements, and ran the full `pytest`. Never redo those steps. If pytest failed, go straight to the fail verdict.
+   - Start the app from that worktree on port 8765 with `GENERATOR_PROVIDER=mock` and `DATABASE_URL=$DATABASE_URL_TEST`.
    - Run the ticket's acceptance criteria by hand where tests do not cover them.
-   - Run the bad-spec set below against any endpoint the PR touches.
+   - Run only the bad-spec items below that hit an endpoint this PR touches. At most 10 manual checks in total; the
+     verdict with its evidence matters more than one more check, so post it before your run ends.
    - Contract check for anything that calls a model (generator, retry, refine): start a fake OpenAI-compatible server on
      localhost (a few lines of `http.server` that answers `POST /v1/chat/completions` with
      `{"choices":[{"message":{"content":"<html>...</html>"}}]}`, and can answer 429 or 500 on request), point the app's
      PRIMARY/FALLBACK base URLs at it, and check: the request body has `model` and `messages`; a 429 or timeout
      triggers the fallback exactly once; a 500 is not treated as a page. Localhost is not "network"; never call a real model.
-   - Run the tests from a fresh worktree, not from the builder's workspace path.
    - Do not claim the ticket and never set `status:in-progress`: the ticket stays `status:needs-test` while you test.
    - All good → `gh pr edit <pr> --remove-label test:failed --add-label test:passed`, comment the evidence (commands
      and short output) on the PR, then `gh issue edit <n> --remove-label agent:tester --add-label agent:lead`

@@ -29,11 +29,21 @@
   <h2>Gallery</h2>
   {% for page in pages %}
   <article>
+    {% if page.refine_instruction %}
+    <h3>v{{ page.version }} of '{{ page.spec }}' · {{ page.refine_instruction }}</h3>
+    {% else %}
     <h3>{{ page.spec }} · v{{ page.version }}</h3>
+    {% endif %}
     <p>Created {{ page.created_at.isoformat() }} · {{ page.attempts }} attempt(s)</p>
     {% if page.refine_instruction %}<p>Refine instruction: {{ page.refine_instruction }}</p>{% endif %}
     <iframe title="Generated page for {{ page.spec }}" sandbox srcdoc="{{ page.html }}"></iframe>
     <details><summary>View source</summary><pre>{{ page.html }}</pre></details>
+    <form action="/pages/{{ page.id }}/refine" method="post">
+      <label>Refine this page
+        <input type="text" name="instruction" maxlength="200" placeholder="make it dark mode" required>
+      </label>
+      <button type="submit">Refine</button>
+    </form>
   </article>
   {% else %}
   <p>No pages have been saved yet.</p>

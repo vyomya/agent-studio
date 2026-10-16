@@ -84,3 +84,16 @@ def list_pages() -> list[Page]:
             """
         ).fetchall()
     return [Page(**row) for row in rows]
+
+
+def get_page(page_id: int) -> Page | None:
+    """Return one saved gallery page, or ``None`` when it does not exist."""
+    with connect() as connection:
+        row = connection.execute(
+            """
+            SELECT id, spec, html, attempts, created_at, parent_id, version, refine_instruction
+            FROM pages WHERE id = %s
+            """,
+            (page_id,),
+        ).fetchone()
+    return Page(**row) if row is not None else None

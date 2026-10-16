@@ -107,6 +107,162 @@ def test_spec_form_has_description_style_and_generate_controls():
     assert 'type="submit">Generate</button>' in response.text
 
 
+def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_REFINE_RESPONSE", "valid")
+    original_html = VALID_GENERATED_HTML
+    original = storage.save_page("A pricing page", original_html, 1)
+
+    with TestClient(app) as client:
+        v2_response = client.post(
+            f"/pages/{original.id}/refine",
+            data={"instruction": "make it dark mode"},
+            follow_redirects=False,
+        )
+        v2 = storage.list_pages()[0]
+        v3_response = client.post(
+            f"/pages/{v2.id}/refine",
+            data={"instruction": "make the header larger"},
+            follow_redirects=False,
+        )
+        gallery = client.get("/")
+
+    assert v2_response.status_code == 303
+    assert v3_response.status_code == 303
+    v2, v3, unchanged_original = storage.get_page(v2.id), storage.list_pages()[0], storage.get_page(original.id)
+    assert v2 is not None and v3 is not None and unchanged_original is not None
+    assert v2.version == 2 and v2.parent_id == original.id
+    assert v2.refine_instruction == "make it dark mode"
+    assert "background: #111" in v2.html
+    assert v3.version == 3 and v3.parent_id == v2.id
+    assert v3.refine_instruction == "make the header larger"
+    assert unchanged_original.html == original_html
+    assert unchanged_original.version == 1 and unchanged_original.parent_id is None
+    assert "v3 of 'A pricing page' · make the header larger" in gallery.text
+    assert "v2 of 'A pricing page' · make it dark mode" in gallery.text
+    assert gallery.text.index("v3 of 'A pricing page'") < gallery.text.index("v2 of 'A pricing page'")
+    assert 'placeholder="make it dark mode"' in gallery.text
+    assert 'name="instruction" maxlength="200"' in gallery.text
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_error"),
+    [
+        ("missing_sections", "Expected at least three <section> elements, found 0."),
+        ("script", "<script> tags are not allowed."),
+    ],
+)
+def test_invalid_refinement_retries_three_times_without_saving(monkeypatch, outcome, expected_error):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_REFINE_RESPONSE", outcome)
+    original = storage.save_page("Original spec", VALID_GENERATED_HTML, 1)
+    calls = []
+    mock_call = MockProvider.call
+
+    def track_call(provider, messages):
+        calls.append(messages)
+        return mock_call(provider, messages)
+
+    monkeypatch.setattr(MockProvider, "call", track_call)
+    with TestClient(app) as client:
+        response = client.post(
+            f"/pages/{original.id}/refine",
+            data={"instruction": "make it dark mode"},
+        )
+
+    assert response.status_code == 503
+    assert "Could not build a valid page" in response.text
+    assert len(calls) == 3
+    assert VALID_GENERATED_HTML in calls[0][1]["content"]
+    assert expected_error in calls[1][1]["content"]
+    pages = storage.list_pages()
+    assert [page.id for page in pages] == [original.id]
+    assert storage.get_page(original.id).html == VALID_GENERATED_HTML
+
+
+def test_invalid_refinement_instruction_is_rejected_without_model_call(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    original = storage.save_page("Original spec", VALID_GENERATED_HTML, 1)
+    mock_call = Mock()
+    monkeypatch.setattr(MockProvider, "call", mock_call)
+
+    with TestClient(app) as client:
+        empty = client.post(f"/pages/{original.id}/refine", data={"instruction": " "})
+        too_long = client.post(
+            f"/pages/{original.id}/refine", data={"instruction": "x" * 201}
+        )
+
+    assert empty.status_code == 400 and "enter a refinement instruction" in empty.text
+    assert too_long.status_code == 400 and "200 characters" in too_long.text
+    mock_call.assert_not_called()
+    assert storage.list_pages() == [original]
+
+
+def test_refinement_consumes_per_visitor_allowance_before_model_call(monkeypatch):
+    visitor_id = f"refine-visitor-limit-{uuid.uuid4().hex}"
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_RESPONSE", "valid")
+    monkeypatch.setenv("MOCK_REFINE_RESPONSE", "valid")
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "1")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "10000")
+    calls = []
+    mock_call = MockProvider.call
+
+    def track_call(provider, messages):
+        calls.append(messages)
+        return mock_call(provider, messages)
+
+    monkeypatch.setattr(MockProvider, "call", track_call)
+    headers = {"X-Forwarded-For": visitor_id}
+    with TestClient(app) as client:
+        generated = client.post("/generate", data={"spec": "A page"}, headers=headers, follow_redirects=False)
+        original = storage.list_pages()[0]
+        refined = client.post(
+            f"/pages/{original.id}/refine", data={"instruction": "make it dark mode"}, headers=headers
+        )
+
+    assert generated.status_code == 303
+    assert refined.status_code == 429
+    assert "page limit" in refined.text
+    assert len(calls) == 1
+    assert len(storage.list_pages()) == 1
+
+
+def test_refinement_consumes_global_daily_allowance_before_model_call(monkeypatch):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MOCK_RESPONSE", "valid")
+    monkeypatch.setenv("MOCK_REFINE_RESPONSE", "valid")
+    monkeypatch.setenv("MODEL_LIMIT_PER_HOUR", "5")
+    monkeypatch.setenv("MODEL_LIMIT_PER_DAY", "20")
+    monkeypatch.setenv("GLOBAL_MODEL_DAILY_LIMIT", "1")
+    calls = []
+    mock_call = MockProvider.call
+
+    def track_call(provider, messages):
+        calls.append(messages)
+        return mock_call(provider, messages)
+
+    monkeypatch.setattr(MockProvider, "call", track_call)
+    with TestClient(app) as client:
+        generated = client.post(
+            "/generate", data={"spec": "A page"},
+            headers={"X-Forwarded-For": f"global-source-{uuid.uuid4().hex}"},
+            follow_redirects=False,
+        )
+        original = storage.list_pages()[0]
+        refined = client.post(
+            f"/pages/{original.id}/refine",
+            data={"instruction": "make it dark mode"},
+            headers={"X-Forwarded-For": f"global-refiner-{uuid.uuid4().hex}"},
+        )
+
+    assert generated.status_code == 303
+    assert refined.status_code == 429
+    assert len(calls) == 1
+    assert len(storage.list_pages()) == 1
+
+
 def test_invalid_spec_is_rejected_without_model_call_or_saving(monkeypatch):
     calls = install_mock_responses(monkeypatch, [VALID_GENERATED_HTML])
     with TestClient(app) as client:
