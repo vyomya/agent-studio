@@ -13,22 +13,31 @@ exec 9>"$LOCK_FILE"
 flock -n 9 || { log 'Another auto-deploy run is active; skipping.'; exit 0; }
 
 [[ -d "$REPO_ROOT/.git" ]] || fail "Git checkout not found: $REPO_ROOT"
-branch="$(git -C "$REPO_ROOT" branch --show-current)"
+REPO_OWNER="$(stat -c %U "$REPO_ROOT")"
+git_repo() {
+  if [[ "$REPO_OWNER" != root && "$(id -u)" -eq 0 ]]; then
+    runuser -u "$REPO_OWNER" -- git -C "$REPO_ROOT" "$@"
+  else
+    git -C "$REPO_ROOT" "$@"
+  fi
+}
+
+branch="$(git_repo branch --show-current)"
 [[ "$branch" == main ]] || fail "Expected the main branch, found '$branch'."
-if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
+if [[ -n "$(git_repo status --porcelain --untracked-files=no)" ]]; then
   fail 'Checkout has local changes; refusing to deploy over them.'
 fi
 
-git -C "$REPO_ROOT" fetch --quiet origin main
-current="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-target="$(git -C "$REPO_ROOT" rev-parse refs/remotes/origin/main)"
+git_repo fetch --quiet origin main
+current="$(git_repo rev-parse HEAD)"
+target="$(git_repo rev-parse refs/remotes/origin/main)"
 if [[ "$current" == "$target" ]]; then
   log 'Checkout is already at origin/main; no restart needed.'
   exit 0
 fi
 
-git -C "$REPO_ROOT" merge-base --is-ancestor HEAD refs/remotes/origin/main \
+git_repo merge-base --is-ancestor HEAD refs/remotes/origin/main \
   || fail 'origin/main is not a fast-forward; refusing to rewrite the checkout.'
-git -C "$REPO_ROOT" merge --ff-only --quiet refs/remotes/origin/main
+git_repo merge --ff-only --quiet refs/remotes/origin/main
 systemctl restart agent-studio.service
-log "Deployed $(git -C "$REPO_ROOT" rev-parse --short HEAD) and restarted agent-studio.service."
+log "Deployed $(git_repo rev-parse --short HEAD) and restarted agent-studio.service."

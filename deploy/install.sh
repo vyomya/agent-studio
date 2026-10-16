@@ -62,6 +62,15 @@ if [[ ! -f "$ENV_FILE" ]] || ! grep -qE '^[[:space:]]*DOMAIN=' "$ENV_FILE"; then
   chmod 0600 "$ENV_FILE"
 fi
 
+# The database volume must always be initialized with a deployment-specific
+# password. Preserve an operator-provided value on subsequent installer runs.
+if ! grep -qE '^[[:space:]]*POSTGRES_PASSWORD=' "$ENV_FILE"; then
+  command -v openssl >/dev/null 2>&1 || fail 'openssl is required to generate POSTGRES_PASSWORD.'
+  POSTGRES_PASSWORD="$(openssl rand -hex 24)" || fail 'Could not generate POSTGRES_PASSWORD.'
+  printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD" >> "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+fi
+
 systemctl enable docker
 if ! systemctl is-active --quiet docker; then
   systemctl start docker
@@ -122,18 +131,30 @@ cat "$COMPOSE_FILE"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
 systemctl restart agent-studio.service
 
-HEALTH_URL="${DEPLOY_URL:-https://${DEPLOY_HOST:-localhost}/}"
-log "Waiting for the application at $HEALTH_URL"
+if [[ -n "${DEPLOY_URL:-}" ]]; then
+  HEALTH_URL="${DEPLOY_URL}"
+  log "Waiting for the application at $HEALTH_URL"
+else
+  DOMAIN="$(awk -F= '/^[[:space:]]*DOMAIN=/ { sub(/^[^=]*=/, ""); gsub(/^[[:space:]\"]+|[[:space:]\"]+$/, ""); value=$0 } END { print value }' "$ENV_FILE")"
+  [[ -n "$DOMAIN" ]] || fail "DOMAIN is missing from $ENV_FILE."
+  log "Waiting for the application at https://$DOMAIN/ through local Caddy"
+fi
 healthy=0
-for _ in {1..30}; do
-  if curl --insecure --fail --silent --output /dev/null --max-time 2 "$HEALTH_URL"; then
+for _ in {1..120}; do
+  if [[ -n "${DEPLOY_URL:-}" ]]; then
+    if curl --fail --silent --output /dev/null --max-time 5 "$HEALTH_URL"; then
+      healthy=1
+      break
+    fi
+  elif curl --fail --silent --output /dev/null --max-time 5 \
+    --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/"; then
     healthy=1
     break
   fi
   sleep 1
 done
 if [[ "$healthy" -ne 1 ]]; then
-  fail "Health check failed for $HEALTH_URL after 30 seconds."
+  fail 'Health check failed after 120 seconds.'
 fi
 
 log 'Agent Studio deployment completed successfully.'
