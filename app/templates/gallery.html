@@ -3,49 +3,132 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent Studio Gallery</title>
+  <title>Agent Studio · Page gallery</title>
   <style>
-    body { font: 1rem/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }
-    form, article { border: 1px solid #bbb; border-radius: .5rem; margin: 1rem 0; padding: 1rem; }
-    label { display: block; margin: .5rem 0; }
-    input, textarea { box-sizing: border-box; width: 100%; }
-    iframe { border: 1px solid #aaa; height: 24rem; width: 100%; }
-    pre { overflow: auto; white-space: pre-wrap; }
-    .message { background: #fff3cd; padding: .75rem; }
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #182238;
+      background: #f4f6fb;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 0; }
+    button, input, textarea { font: inherit; }
+    .shell { width: min(100% - 2rem, 76rem); margin: 0 auto; padding: 2rem 0 4rem; }
+    .site-header { margin-bottom: 1.75rem; }
+    .brand { margin: 0; color: #142342; font-size: clamp(2rem, 5vw, 2.8rem); letter-spacing: -.04em; line-height: 1.1; }
+    .tagline { margin: .6rem 0 0; max-width: 42rem; color: #3f4b61; font-size: 1.08rem; }
+    .form-card, .page-card { min-width: 0; border: 1px solid #d8deea; border-radius: 1rem; background: #fff; box-shadow: 0 8px 24px rgb(23 42 75 / 7%); }
+    .form-card { margin: 0 0 2.5rem; padding: clamp(1.1rem, 3vw, 1.75rem); }
+    .form-card h2, .gallery-heading { margin: 0 0 .45rem; color: #182846; font-size: 1.35rem; }
+    .form-intro { margin: 0 0 1rem; color: #4b5870; }
+    label { display: block; margin: 1rem 0 .4rem; color: #263550; font-weight: 650; }
+    textarea, input[type="text"] { display: block; width: 100%; min-width: 0; border: 1px solid #77849a; border-radius: .55rem; padding: .75rem .85rem; background: #fff; color: #182238; }
+    textarea { min-height: 7.5rem; resize: vertical; }
+    textarea:focus-visible, input:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid #245db4; outline-offset: 3px; }
+    .field-meta { display: flex; justify-content: flex-end; margin-top: .3rem; color: #4b5870; font-size: .9rem; font-variant-numeric: tabular-nums; }
+    .button { min-height: 2.75rem; margin-top: 1.15rem; border: 0; border-radius: .55rem; padding: .65rem 1.15rem; background: #174f9c; color: #fff; font-weight: 700; cursor: pointer; }
+    .button:hover:not(:disabled) { background: #103d7a; }
+    .button:disabled { cursor: wait; background: #365f94; }
+    .message { margin: 0 0 1.5rem; border: 1px solid #9a6500; border-left-width: .35rem; border-radius: .65rem; padding: .9rem 1rem; background: #fff5d9; color: #493000; }
+    .message[role="alert"] { border-color: #a62626; background: #fff0ef; color: #641717; }
+    .gallery-heading { margin-bottom: 1rem; font-size: 1.65rem; }
+    .gallery-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; align-items: stretch; }
+    .page-card { display: flex; flex-direction: column; overflow: hidden; padding: 1rem; }
+    .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .65rem; min-width: 0; margin-bottom: .35rem; }
+    .page-title { min-width: 0; margin: 0; color: #1b2b49; font-size: 1.15rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .version-badge { flex: 0 0 auto; border-radius: 999px; padding: .2rem .6rem; background: #e8effa; color: #163f78; font-size: .84rem; font-weight: 750; }
+    .card-tags { display: flex; flex-wrap: wrap; gap: .4rem; margin: .35rem 0 .55rem; }
+    .refine-tag { max-width: 100%; border-radius: .35rem; padding: .2rem .5rem; background: #f0eafa; color: #482e70; font-size: .85rem; overflow-wrap: anywhere; }
+    .card-meta { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: 0 0 .75rem; color: #4b5870; font-size: .9rem; }
+    .preview { display: block; width: 100%; height: 18rem; min-width: 0; border: 1px solid #c3cad6; border-radius: .45rem; background: #fff; }
+    .card-actions { display: flex; flex: 1; flex-direction: column; min-width: 0; margin-top: auto; padding-top: .9rem; }
+    details { border-top: 1px solid #e0e5ed; padding-top: .7rem; }
+    summary { width: fit-content; color: #174f9c; font-weight: 650; cursor: pointer; }
+    pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #263550; }
+    .refine-form { margin-top: .8rem; border-top: 1px solid #e0e5ed; padding-top: .6rem; }
+    .refine-form label { margin-top: .4rem; }
+    .refine-form .button { margin-top: .65rem; }
+    .empty-state { border: 1px dashed #8491a7; border-radius: .8rem; padding: 1.5rem; background: #fff; color: #3f4b61; }
+    @media (min-width: 640px) {
+      .shell { width: min(100% - 3rem, 76rem); padding-top: 2.75rem; }
+      .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1000px) {
+      .gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
   </style>
 </head>
 <body>
-  <h1>Agent Studio</h1>
-  <form action="/generate" method="post">
-    <label>Describe your page (up to 500 characters)
-      <textarea name="spec" maxlength="500" required></textarea>
-    </label>
-    <label>Optional style example
-      <input type="text" name="style_example">
-    </label>
-    <button type="submit">Generate</button>
-  </form>
-  {% if message %}<p class="message" role="status">{{ message }}</p>{% endif %}
-  <h2>Gallery</h2>
-  {% for page in pages %}
-  <article>
-    {% if page.refine_instruction %}
-    <h3>v{{ page.version }} of '{{ page.spec }}' · {{ page.refine_instruction }}</h3>
-    {% else %}
-    <h3>{{ page.spec }} · v{{ page.version }}</h3>
+  <main class="shell">
+    <header class="site-header">
+      <h1 class="brand">Agent Studio</h1>
+      <p class="tagline">Turn a short idea into a polished, ready-to-preview web page.</p>
+    </header>
+
+    <section class="form-card" aria-labelledby="create-heading">
+      <h2 id="create-heading">Create a page</h2>
+      <p class="form-intro">Describe what you need and we’ll build a page for you.</p>
+      <form action="/generate" method="post" data-request-form data-running-label="Generating...">
+        <label for="spec">Describe your page (up to 500 characters)</label>
+        <textarea id="spec" name="spec" maxlength="500" required></textarea>
+        <div class="field-meta"><span id="spec-count" aria-live="polite">0 / 500</span></div>
+        <label for="style-example">Optional style example</label>
+        <input id="style-example" type="text" name="style_example">
+        <button class="button" type="submit">Generate</button>
+      </form>
+    </section>
+
+    {% if message %}
+    <p class="message" role="{{ 'alert' if has_error else 'status' }}">{{ message }}</p>
     {% endif %}
-    <p>Created {{ page.created_at.isoformat() }} · {{ page.attempts }} attempt(s)</p>
-    <iframe title="Generated page for {{ page.spec }}" sandbox srcdoc="{{ page.html }}"></iframe>
-    <details><summary>View source</summary><pre>{{ page.html }}</pre></details>
-    <form action="/pages/{{ page.id }}/refine" method="post">
-      <label>Refine this page
-        <input type="text" name="instruction" maxlength="200" placeholder="make it dark mode" required>
-      </label>
-      <button type="submit">Refine</button>
-    </form>
-  </article>
-  {% else %}
-  <p>No pages have been saved yet.</p>
-  {% endfor %}
+
+    <section aria-labelledby="gallery-heading">
+      <h2 class="gallery-heading" id="gallery-heading">Your gallery</h2>
+      {% if pages %}
+      <div class="gallery-grid">
+        {% for page in pages %}
+        <article class="page-card">
+          <div class="card-heading">
+            <h3 class="page-title">{{ page.spec }}</h3>
+            <span class="version-badge">v{{ page.version }}</span>
+          </div>
+          {% if page.refine_instruction %}
+          <div class="card-tags"><span class="refine-tag">{{ page.refine_instruction }}</span></div>
+          {% endif %}
+          <p class="card-meta"><time datetime="{{ page.created_at.isoformat() }}">{{ page.created_at.strftime("%d %b, %H:%M") }}</time><span>{{ page.attempts }} attempt(s)</span></p>
+          <iframe class="preview" title="Generated page for {{ page.spec }}" sandbox srcdoc="{{ page.html }}"></iframe>
+          <div class="card-actions">
+            <details><summary>View source</summary><pre>{{ page.html }}</pre></details>
+            <form class="refine-form" action="/pages/{{ page.id }}/refine" method="post" data-request-form data-running-label="Refining...">
+              <label for="instruction-{{ page.id }}">Refine this page</label>
+              <input id="instruction-{{ page.id }}" type="text" name="instruction" maxlength="200" placeholder="make it dark mode" required>
+              <button class="button" type="submit">Refine</button>
+            </form>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">Your gallery is ready for its first page. Describe an idea above to get started.</p>
+      {% endif %}
+    </section>
+  </main>
+  <script>
+    const specField = document.getElementById('spec');
+    const specCount = document.getElementById('spec-count');
+    specField.addEventListener('input', () => {
+      specCount.textContent = specField.value.length + ' / 500';
+    });
+    document.querySelectorAll('[data-request-form]').forEach((form) => {
+      form.addEventListener('submit', () => {
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        button.textContent = form.dataset.runningLabel;
+      });
+    });
+  </script>
 </body>
 </html>

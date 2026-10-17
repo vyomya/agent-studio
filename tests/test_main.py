@@ -101,10 +101,34 @@ def test_spec_form_has_description_style_and_generate_controls():
         response = client.get("/")
 
     assert response.status_code == 200
-    assert '<form action="/generate" method="post">' in response.text
-    assert 'name="spec" maxlength="500" required' in response.text
-    assert 'name="style_example"' in response.text
-    assert 'type="submit">Generate</button>' in response.text
+    assert '<h1 class="brand">Agent Studio</h1>' in response.text
+    assert 'Turn a short idea into a polished, ready-to-preview web page.' in response.text
+    assert 'class="form-card"' in response.text
+    assert '<form action="/generate" method="post" data-request-form' in response.text
+    assert 'for="spec"' in response.text and 'name="spec" maxlength="500" required' in response.text
+    assert 'id="spec-count" aria-live="polite">0 / 500' in response.text
+    assert 'for="style-example"' in response.text and 'name="style_example"' in response.text
+    assert '<button class="button" type="submit">Generate</button>' in response.text
+    assert 'class="gallery-grid"' not in response.text
+    assert 'Your gallery is ready for its first page.' in response.text
+
+
+def test_page_has_self_contained_responsive_styles_and_running_button_states():
+    storage.save_page("An example page", VALID_GENERATED_HTML, 1)
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "@media (min-width: 640px)" in response.text
+    assert "repeat(2, minmax(0, 1fr))" in response.text
+    assert "@media (min-width: 1000px)" in response.text
+    assert "repeat(3, minmax(0, 1fr))" in response.text
+    assert "focus-visible" in response.text
+    assert "<link " not in response.text.lower()
+    assert "<script src=" not in response.text.lower()
+    assert 'data-running-label="Generating..."' in response.text
+    assert 'data-running-label="Refining..."' in response.text
+    assert "button.disabled = true" in response.text
 
 
 def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypatch):
@@ -153,12 +177,16 @@ def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypat
     assert v4.version == 4 and v4.parent_id == v1.id
     assert v4.refine_instruction == "make the footer smaller"
     assert v1.html == original_html
-    assert "v3 of 'A pricing page' · make the header larger" in gallery.text
-    assert "v2 of 'A pricing page' · make it dark mode" in gallery.text
-    assert "v4 of 'A pricing page' · make the footer smaller" in gallery.text
-    assert gallery.text.count("v2 of 'A pricing page' · make it dark mode") == 1
+    assert 'class="gallery-grid"' in gallery.text
+    assert '<h3 class="page-title">A pricing page</h3>' in gallery.text
+    assert '<span class="version-badge">v2</span>' in gallery.text
+    assert '<span class="version-badge">v3</span>' in gallery.text
+    assert '<span class="version-badge">v4</span>' in gallery.text
+    assert '<span class="refine-tag">make it dark mode</span>' in gallery.text
+    assert '<span class="refine-tag">make the header larger</span>' in gallery.text
+    assert '<span class="refine-tag">make the footer smaller</span>' in gallery.text
     assert "Refine instruction:" not in gallery.text
-    assert gallery.text.index("v3 of 'A pricing page'") < gallery.text.index("v2 of 'A pricing page'")
+    assert gallery.text.index('<span class="version-badge">v3</span>') < gallery.text.index('<span class="version-badge">v2</span>')
     assert 'placeholder="make it dark mode"' in gallery.text
     assert 'name="instruction" maxlength="200"' in gallery.text
 
@@ -289,6 +317,7 @@ def test_invalid_spec_is_rejected_without_model_call_or_saving(monkeypatch):
 
     assert empty.status_code == 400
     assert "Please enter" in empty.text
+    assert 'class="message" role="alert"' in empty.text
     assert too_long.status_code == 400
     assert "500 characters" in too_long.text
     assert calls == []
