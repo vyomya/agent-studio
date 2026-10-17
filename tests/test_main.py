@@ -177,6 +177,7 @@ def test_refinements_create_immutable_version_chain_and_gallery_labels(monkeypat
     assert v4.version == 4 and v4.parent_id == v1.id
     assert v4.refine_instruction == "make the footer smaller"
     assert v1.html == original_html
+    assert 'class="gallery-grid"' in gallery.text
     assert '<h3 class="page-title">A pricing page</h3>' in gallery.text
     assert '<span class="version-badge">v2</span>' in gallery.text
     assert '<span class="version-badge">v3</span>' in gallery.text
