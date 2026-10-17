@@ -38,7 +38,7 @@ def _gallery(request: Request, message: str | None = None, status_code: int = 20
     return templates.TemplateResponse(
         request=request,
         name="gallery.html",
-        context={"pages": list_pages(), "message": message},
+        context={"pages": list_pages(), "message": message, "has_error": status_code >= 400},
         status_code=status_code,
     )
 
