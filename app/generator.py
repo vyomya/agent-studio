@@ -29,7 +29,14 @@ class Provider:
 
     timeout_seconds = 60
 
-    def __init__(self, base_url: str, api_key: str, model: str, name: str = "primary") -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        name: str = "primary",
+        max_tokens: int = 2048,
+    ) -> None:
         try:
             timeout_seconds = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
         except (TypeError, ValueError):
@@ -39,6 +46,7 @@ class Provider:
         self.api_key = api_key
         self.model = model
         self.name = name
+        self.max_tokens = max_tokens
 
     def call(self, messages: list[dict[str, str]]) -> ProviderResponse:
         url = f"{self.base_url}/chat/completions"
@@ -47,7 +55,11 @@ class Provider:
             response = requests.post(
                 url,
                 headers=headers,
-                json={"model": self.model, "messages": messages},
+                json={
+                    "model": self.model,
+                    "messages": messages,
+                    "max_tokens": self.max_tokens,
+                },
                 timeout=self.timeout_seconds,
             )
         except requests.exceptions.Timeout as exc:
@@ -132,6 +144,12 @@ class Generator:
         self.provider_mode = os.getenv("GENERATOR_PROVIDER", "openai").strip().lower()
         if self.provider_mode not in {"openai", "mock"}:
             raise GeneratorConfigError("GENERATOR_PROVIDER must be 'openai' or 'mock'")
+        try:
+            self.max_tokens = int(os.getenv("MODEL_MAX_TOKENS", "2048"))
+        except ValueError as exc:
+            raise GeneratorConfigError("MODEL_MAX_TOKENS must be a positive integer") from exc
+        if self.max_tokens < 1:
+            raise GeneratorConfigError("MODEL_MAX_TOKENS must be a positive integer")
 
         primary_model = os.getenv("PRIMARY_MODEL")
         fallback_model = os.getenv("FALLBACK_MODEL")
@@ -149,8 +167,8 @@ class Generator:
                 "PRIMARY_BASE_URL, PRIMARY_API_KEY, PRIMARY_MODEL, FALLBACK_BASE_URL, "
                 "FALLBACK_API_KEY, and FALLBACK_MODEL are required"
             )
-        self.primary = Provider(primary_url, primary_key, primary_model, "primary")
-        self.fallback = Provider(fallback_url, fallback_key, fallback_model, "fallback")
+        self.primary = Provider(primary_url, primary_key, primary_model, "primary", self.max_tokens)
+        self.fallback = Provider(fallback_url, fallback_key, fallback_model, "fallback", self.max_tokens)
 
     @staticmethod
     def _messages(

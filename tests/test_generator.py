@@ -69,7 +69,7 @@ def clear_generator_environment(monkeypatch):
     for name in (
         "GENERATOR_PROVIDER", "PRIMARY_BASE_URL", "PRIMARY_API_KEY", "PRIMARY_MODEL",
         "FALLBACK_BASE_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL", "MOCK_RESPONSE",
-        "MOCK_RESPONSE_FALLBACK", "MODEL_TIMEOUT_SECONDS",
+        "MOCK_RESPONSE_FALLBACK", "MODEL_TIMEOUT_SECONDS", "MODEL_MAX_TOKENS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -77,13 +77,15 @@ def clear_generator_environment(monkeypatch):
 def test_openai_compatible_request_and_response(monkeypatch):
     with fake_openai_server({"primary-model": {"content": "<html>from primary</html>"}}) as (url, server):
         configure_real_provider(monkeypatch, url)
+        monkeypatch.setenv("MODEL_MAX_TOKENS", "73")
         page = Generator().generate("a dog-walking pricing page", "soft pastel style")
 
     assert page == "<html>from primary</html>"
     path, payload, authorization = server.requests_received[0]
     assert path == "/v1/chat/completions"
-    assert set(payload) == {"model", "messages"}
+    assert set(payload) == {"model", "messages", "max_tokens"}
     assert payload["model"] == "primary-model"
+    assert payload["max_tokens"] == 73
     assert [message["role"] for message in payload["messages"]] == ["system", "user"]
     assert "dog-walking pricing page" in payload["messages"][1]["content"]
     assert "soft pastel style" in payload["messages"][1]["content"]
@@ -97,9 +99,11 @@ def test_eligible_http_status_uses_fallback_once(monkeypatch, status):
         "fallback-model": {"content": "<html>fallback</html>"},
     }) as (url, server):
         configure_real_provider(monkeypatch, url)
+        monkeypatch.setenv("MODEL_MAX_TOKENS", "91")
         assert Generator().generate("spec") == "<html>fallback</html>"
 
     assert [payload["model"] for _, payload, _ in server.requests_received] == ["primary-model", "fallback-model"]
+    assert [payload["max_tokens"] for _, payload, _ in server.requests_received] == [91, 91]
 
 
 def test_timeout_uses_fallback_once(monkeypatch):
@@ -194,6 +198,15 @@ def test_both_mock_attempts_failing_show_friendly_error(monkeypatch):
 def test_openai_provider_requires_primary_and_fallback_configuration(monkeypatch):
     monkeypatch.setenv("GENERATOR_PROVIDER", "openai")
     with pytest.raises(GeneratorConfigError):
+        Generator()
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "not-an-integer"])
+def test_model_token_cap_must_be_a_positive_integer(monkeypatch, value):
+    monkeypatch.setenv("GENERATOR_PROVIDER", "mock")
+    monkeypatch.setenv("MODEL_MAX_TOKENS", value)
+
+    with pytest.raises(GeneratorConfigError, match="MODEL_MAX_TOKENS"):
         Generator()
 
 
