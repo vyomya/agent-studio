@@ -73,11 +73,24 @@ def test_external_link_and_image():
 
 
 def test_oversized_html():
-    # Create a string >100KB
-    big_body = "<p>" + ("x" * 1024 * 101) + "</p>"
-    html = _make_html(body=big_body)
+    # The limit is inclusive, so one byte above 100 KiB must fail.
+    limit = 100 * 1024
+    empty_body_html = _make_html(body="")
+    body = "x" * (limit + 1 - len(empty_body_html.encode("utf-8")))
+    html = _make_html(body=body)
+    assert len(html.encode("utf-8")) == limit + 1
     errors = validate_html(html)
     assert any("size" in e.lower() for e in errors)
+
+
+def test_html_at_exactly_100_kib_is_allowed():
+    limit = 100 * 1024
+    empty_body_html = _make_html(body="")
+    body = "x" * (limit - len(empty_body_html.encode("utf-8")))
+    html = _make_html(body=body)
+
+    assert len(html.encode("utf-8")) == limit
+    assert validate_html(html) == []
 
 def test_inline_event_handler():
     """Validator should flag any attribute that starts with ``on`` (e.g., ``onclick``)."""
